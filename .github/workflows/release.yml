@@ -1,10 +1,18 @@
-# Gera o instalador. Numa tag "v*" (ex.: v6.0) publica uma Release com o Setup.exe e o .zip.
+# Gera o instalador e publica a Release.
+#  - Ao enviar uma tag "v*" (ex.: v6.0), ou ao criar uma Release pelo site com uma tag nova.
+#  - Pela aba Actions > "Gerar instalador" > Run workflow: com "versao" preenchida (ex.: v6.1)
+#    cria a tag e publica a Release; vazia, só gera os arquivos (ficam em Artifacts).
 name: Gerar instalador
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versão para publicar (ex.: v6.1). Deixe vazio para só gerar os arquivos."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -32,8 +40,12 @@ jobs:
           path: dist/*
 
       - name: Publicar a Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.versao != ''
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          tag_name: ${{ inputs.versao || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: Painel de Telemetria ${{ inputs.versao || github.ref_name }}
+          body_path: .github/release.md
           generate_release_notes: true
+          files: dist/*

@@ -92,7 +92,7 @@ python scripts/montar_pacote.py              # gera dist/PainelTelemetria-<vers�
 python scripts/montar_pacote.py --sem-setup  # só o .zip (instalação manual pelo Instalar.bat)
 ```
 
-Ao criar uma tag `v*` (por exemplo `v6.0`), o GitHub Actions gera o instalador e publica uma Release com ele.
+Para publicar uma versão nova: aba **Actions** > **Gerar instalador** > **Run workflow**, preencha a versão (por exemplo `v6.1`) e confirme. O GitHub gera o instalador e cria a Release com ele. Também funciona criando uma Release pelo site com uma tag nova.
 
 Para testar sem a tela, instale com `Instalar (simulador).bat` do pacote .zip e abra `http://localhost:5678`.
 
