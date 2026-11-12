@@ -1,4 +1,4 @@
-# Painel de Telemetria - iniciador e ícone da bandeja
+# PULSE — System Telemetry - iniciador e ícone da bandeja
 #
 # É o que a tarefa "PainelTelemetria" abre ao entrar no Windows (como administrador, exigido
 # pelo LibreHardwareMonitor). Ele:
@@ -11,7 +11,7 @@
 #   3. mostra o ícone na bandeja (perto do relógio, em "mostrar ícones ocultos") com atalhos
 #      para abrir a configuração, trocar de perfil, mudar o brilho, reiniciar e sair;
 #   4. recebe comandos em 127.0.0.1:5681 ("abrir", "aplicar", "reiniciar", "perfis", "sair", "ping")
-#      da janela de configuração e do atalho "Painel de Telemetria".
+#      da janela de configuração e do atalho "PULSE".
 #   Trocar tema ou brilho não reinicia o main.py: o pedido vai para o painel/troca_tema.py, que roda
 #   dentro dele (127.0.0.1:5682) e só redesenha a tela. Girar a tela 180° ainda reinicia.
 # Rode a partir da pasta app:  pythonw painel/iniciar.py [--abrir]
@@ -38,7 +38,7 @@ PORTA_CONFIG = 5680              # janela de configuração (painel/config_ui.py
 PORTA_MAIN = 5682                # main.py: troca de tema/brilho sem reiniciar (painel/troca_tema.py)
 SIMULAR_JOGO = DESTINO / "simular_jogo.txt"   # para testes: se existir, finge que há um jogo em tela cheia
 PEDIDO_REINICIO = DESTINO / ".reiniciar"      # alternativa ao comando "reiniciar"
-ICONE_PNG = PAINEL / "icone.png"
+ICONE_PNG = PAINEL / "pulse_tray.png"
 WINDOWS = platform.system() == "Windows"
 
 PERFIS_PADRAO = {"auto": True, "trabalho": "Meu_Trabalho", "jogos": "Meu_Jogos", "entrar_s": 5, "sair_s": 20}
@@ -270,7 +270,7 @@ class Painel:
                 rotulo = "Perfil Jogos"
             elif self.tema == self.perfis.get("trabalho"):
                 rotulo = "Perfil Trabalho"
-            self.icone.title = f"Painel de Telemetria\n{rotulo}: {nome_do_tema(self.tema)}"[:127]
+            self.icone.title = f"PULSE — System Telemetry\n{rotulo}: {nome_do_tema(self.tema)}"[:127]
             self.icone.update_menu()
         except Exception as e:
             log.info("Falha ao atualizar o ícone: %s", e)
@@ -471,7 +471,7 @@ def criar_icone(painel):
         m("Reiniciar a tela", faz(painel.pedir_reinicio)),
         m("Sair (a tela para de atualizar)", faz(painel.sair)),
     )
-    return pystray.Icon("PainelTelemetria", Image.open(ICONE_PNG), "Painel de Telemetria", menu)
+    return pystray.Icon("PULSE", Image.open(ICONE_PNG), "PULSE — System Telemetry", menu)
 
 
 def main():

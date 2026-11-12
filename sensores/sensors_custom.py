@@ -102,7 +102,7 @@ class ExampleCustomTextOnlyData(CustomDataSource):
 
 
 # =====================================================================================
-# PainelTelemetria: sensores próprios (volume, FPS, frametime, SSD)
+# PULSE — System Telemetry: sensores próprios (volume, FPS, frametime, SSD)
 # =====================================================================================
 # Obs.: o System Monitor cria uma instância nova de cada classe a cada atualização,
 # por isso o histórico fica em atributos de classe.

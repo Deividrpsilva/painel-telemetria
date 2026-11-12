@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## 7.0 — PULSE
+- Novo nome e identidade visual: **PULSE — System Telemetry** (antes "Painel de Telemetria").
+- Logo em SVG e PNG (fundo preto e transparente), ícone próprio do Windows e da bandeja, imagens do instalador (pasta `marca/`).
+- Tela de inicialização animada: logo com respiração de 2,5 s (98% a 102%), brilho ciano suave e barra de progresso ligada às etapas reais. A janela de configuração só aparece quando está pronta, e a splash fecha sozinha se algo falhar.
+- Botão **Sobre** na configuração: versão instalada, desenvolvedor, repositório, tecnologias e créditos.
+- Janela, bandeja, atalhos ("PULSE"), instalador e "Adicionar ou remover programas" com o novo nome. A pasta `C:\PainelTelemetria`, a tarefa de inicialização e os temas continuam os mesmos, então a atualização mantém tudo.
+- Instalador renomeado para `PULSE-Setup.exe`.
+
 ## 6.1
 - Troca de tema quase instantânea, como no TURMO: o programa da tela não fecha mais; só redesenha o fundo e os valores (cerca de 0,1 s no simulador, mais o tempo de envio pela USB).
 - Vale para "Aplicar na tela", "Usar agora" dos perfis, perfil e brilho pela bandeja e para a troca automática ao entrar e sair de jogos.

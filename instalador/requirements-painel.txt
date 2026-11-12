@@ -1,4 +1,4 @@
-# Dependências do Painel de Telemetria no Windows (instaladas sem internet a partir da pasta wheels)
+# Dependências do PULSE — System Telemetry no Windows (instaladas sem internet a partir da pasta wheels)
 pyserial~=3.5
 PyYAML~=6.0.3
 psutil~=7.2.2

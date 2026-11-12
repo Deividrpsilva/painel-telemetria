@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Monta o pacote e o instalador do Painel de Telemetria a partir deste repositório.
+"""Monta o pacote e o instalador do PULSE — System Telemetry a partir deste repositório.
 
 O que faz:
   1. baixa o turing-smart-screen-python (só as partes usadas: programa, LibreHardwareMonitor,
@@ -7,8 +7,8 @@ O que faz:
   2. aplica pequenos ajustes no main.py (a bandeja fica com o painel e a troca de tema é feita sem reiniciar);
   3. junta com o código deste repositório (painel/, sensores/, instalador/);
   4. gera em dist/:
-       PainelTelemetria-<versão>.zip   pacote com Instalar.bat (instalação manual)
-       PainelTelemetria-Setup.exe      instalador (precisa do NSIS: "apt install nsis" ou "choco install nsis")
+       PULSE-<versão>.zip   pacote com Instalar.bat (instalação manual)
+       PULSE-Setup.exe      instalador (precisa do NSIS: "apt install nsis" ou "choco install nsis")
 
 Uso (na raiz do repositório):
   python scripts/montar_pacote.py                 tudo
@@ -77,12 +77,12 @@ AJUSTES_MAIN = [
     # o ícone da bandeja passa a ser o do painel (painel/iniciar.py)
     ("    try:\n        tray_icon = pystray.Icon(",
      "    try:\n"
-     "        if os.environ.get(\"PAINEL_SEM_BANDEJA\"):  # Painel de Telemetria: o ícone fica com o painel/iniciar.py\n"
-     "            raise RuntimeError(\"bandeja do Painel de Telemetria\")\n"
+     "        if os.environ.get(\"PAINEL_SEM_BANDEJA\"):  # PULSE: o ícone fica com o painel/iniciar.py\n"
+     "            raise RuntimeError(\"bandeja do PULSE\")\n"
      "        tray_icon = pystray.Icon("),
     # troca de tema sem reiniciar: precisa entrar antes do agendador ler os intervalos do tema
     ("    import library.scheduler as scheduler\n",
-     "    try:  # Painel de Telemetria: troca de tema e brilho sem reiniciar (painel/troca_tema.py)\n"
+     "    try:  # PULSE: troca de tema e brilho sem reiniciar (painel/troca_tema.py)\n"
      "        import painel.troca_tema as troca_tema\n"
      "    except Exception as e:\n"
      "        troca_tema = None\n"
@@ -117,6 +117,7 @@ def montar_pacote(upstream: Path) -> Path:
     shutil.copytree(upstream, app, ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*_preview.png"))
     ajustar_main(app)
     shutil.copytree(RAIZ / "painel", app / "painel", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    (app / "painel" / "versao.txt").write_text(versao(), encoding="utf-8")   # mostrada na tela Sobre
     shutil.copy2(RAIZ / "sensores" / "sensors_custom.py", app / "library" / "sensors" / "sensors_custom.py")
     shutil.copy2(RAIZ / "sensores" / "sensors_custom.py", pacote / "sensors_custom.py")
     for nome in ARQUIVOS_INSTALADOR:
@@ -127,7 +128,7 @@ def montar_pacote(upstream: Path) -> Path:
 
 def gerar_zip(pacote: Path, ver: str) -> Path:
     DIST.mkdir(exist_ok=True)
-    nome = f"PainelTelemetria-{ver}"
+    nome = f"PULSE-{ver}"
     arq = DIST / f"{nome}.zip"
     with zipfile.ZipFile(arq, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(pacote.rglob("*")):
@@ -142,17 +143,19 @@ def gerar_setup(pacote: Path) -> Path:
     if not makensis:
         sys.exit("makensis não encontrado. Instale o NSIS (Linux: apt install nsis | Windows: choco install nsis)")
     shutil.copy2(RAIZ / "instalador" / "setup.nsi", BUILD / "setup.nsi")
+    for bmp in ("pulse_instalador_lateral.bmp", "pulse_instalador_cabecalho.bmp"):
+        shutil.copy2(RAIZ / "instalador" / bmp, BUILD / bmp)
     rodar(makensis, "-INPUTCHARSET", "UTF8", "-V2", "setup.nsi", cwd=BUILD)
     DIST.mkdir(exist_ok=True)
-    destino = DIST / "PainelTelemetria-Setup.exe"
-    shutil.move(BUILD / "PainelTelemetria-Setup.exe", destino)
+    destino = DIST / "PULSE-Setup.exe"
+    shutil.move(BUILD / "PULSE-Setup.exe", destino)
     print(f"Instalador: {destino} ({destino.stat().st_size / 1e6:.1f} MB)")
     return destino
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--sem-setup", action="store_true", help="não gera o PainelTelemetria-Setup.exe")
+    ap.add_argument("--sem-setup", action="store_true", help="não gera o PULSE-Setup.exe")
     ap.add_argument("--upstream", type=Path, help="pasta com o turing-smart-screen-python já baixado")
     a = ap.parse_args()
     BUILD.mkdir(exist_ok=True)

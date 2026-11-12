@@ -1,4 +1,4 @@
-﻿# Remove o Painel de Telemetria (rode como administrador, ou use "Adicionar ou remover programas")
+﻿# Remove o PULSE — System Telemetry (rode como administrador, ou use "Adicionar ou remover programas")
 #   desinstalar.ps1               remove tudo
 #   desinstalar.ps1 -ManterTemas  mantém seus temas (pasta temas), imagens de fundo e perfis
 param([string]$Destino = "C:\PainelTelemetria", [switch]$ManterTemas)
@@ -13,7 +13,7 @@ if ((Test-Path $py) -and (Test-Path $parar)) {
     $ErrorActionPreference = $eap
 }
 Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' OR Name='python.exe'" |
-    Where-Object { $_.CommandLine -and $_.CommandLine -match '(main|iniciar|config_ui)\.py' -and ($_.CommandLine -like "*$App*" -or $_.CommandLine -like "*painel\*.py*") } |
+    Where-Object { $_.CommandLine -and $_.CommandLine -match '(main|iniciar|config_ui|splash|abrir)\.py' -and ($_.CommandLine -like "*$App*" -or $_.CommandLine -like "*painel\*.py*") } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Seconds 1
 
@@ -30,7 +30,10 @@ $atalhos = @(
     (Join-Path ([Environment]::GetFolderPath("Desktop")) "Configurar painel.lnk"),
     (Join-Path ([Environment]::GetFolderPath("Desktop")) "Painel de Telemetria.lnk"),
     (Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) "Painel de Telemetria.lnk"),
-    (Join-Path ([Environment]::GetFolderPath("CommonPrograms")) "Painel de Telemetria.lnk")
+    (Join-Path ([Environment]::GetFolderPath("CommonPrograms")) "Painel de Telemetria.lnk"),
+    (Join-Path ([Environment]::GetFolderPath("Desktop")) "PULSE.lnk"),
+    (Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) "PULSE.lnk"),
+    (Join-Path ([Environment]::GetFolderPath("CommonPrograms")) "PULSE.lnk")
 )
 foreach ($a in $atalhos) { Remove-Item -Force $a -ErrorAction SilentlyContinue }
-Write-Host "Painel removido. Para voltar ao TURMO, abra-o e marque 'Startup' de novo."
+Write-Host "PULSE removido. Para voltar ao TURMO, abra-o e marque 'Startup' de novo."

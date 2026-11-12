@@ -1,5 +1,5 @@
 ﻿<#
-  Painel de Telemetria - instalador
+  PULSE — System Telemetry - instalador
   Instala o turing-smart-screen-python (open source) com o tema PainelTelemetria e os sensores extras
   (volume, FPS/frametime, SSD), e cria uma tarefa para iniciar junto com o Windows.
 
@@ -8,7 +8,7 @@
     instalar.ps1 -Simulador         usa a tela simulada (http://localhost:5678) em vez da tela USB
     instalar.ps1 -SoAtualizarTema   só copia tema + sensores de novo e reinicia o painel (para ajustes)
     instalar.ps1 -SemInicioAutomatico   não cria a tarefa de inicialização
-    instalar.ps1 -Instalador        chamado pelo PainelTelemetria-Setup.exe (sem pausas)
+    instalar.ps1 -Instalador        chamado pelo PULSE-Setup.exe (sem pausas)
 #>
 param(
     [switch]$Simulador,
@@ -56,7 +56,7 @@ function Parar-Painel {
         $ErrorActionPreference = $eap
     }
     Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' OR Name='python.exe'" |
-        Where-Object { $_.CommandLine -and $_.CommandLine -match '(main|iniciar|config_ui)\.py' -and
+        Where-Object { $_.CommandLine -and $_.CommandLine -match '(main|iniciar|config_ui|splash|abrir)\.py' -and
                        ($_.CommandLine -like "*$App*" -or $_.CommandLine -match 'Python3\d+\\pythonw?\.exe') } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Seconds 1
@@ -207,9 +207,14 @@ foreach ($velho in @("Editor de tema.bat", "Configuracao avancada.bat", "Configu
 }
 $mesas = @([Environment]::GetFolderPath("Desktop"), [Environment]::GetFolderPath("CommonDesktopDirectory"))
 foreach ($m in $mesas) { Remove-Item -Force (Join-Path $m "Configurar painel.lnk") -ErrorAction SilentlyContinue }
-$icone = Join-Path $App "painel\painel.ico"
-$menu = Join-Path ([Environment]::GetFolderPath("CommonPrograms")) "Painel de Telemetria.lnk"
-$mesa = Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) "Painel de Telemetria.lnk"
+# até a versão 6 o atalho se chamava "Painel de Telemetria"
+foreach ($pasta in @([Environment]::GetFolderPath("Desktop"), [Environment]::GetFolderPath("CommonDesktopDirectory"),
+                     [Environment]::GetFolderPath("CommonPrograms"))) {
+    Remove-Item -Force (Join-Path $pasta "Painel de Telemetria.lnk") -ErrorAction SilentlyContinue
+}
+$icone = Join-Path $App "painel\pulse.ico"
+$menu = Join-Path ([Environment]::GetFolderPath("CommonPrograms")) "PULSE.lnk"
+$mesa = Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) "PULSE.lnk"
 try {
     $ws = New-Object -ComObject WScript.Shell
     foreach ($arq in @($menu, $mesa)) {
@@ -218,10 +223,10 @@ try {
         $lnk.Arguments = '"' + (Join-Path $App "painel\abrir.py") + '"'
         $lnk.WorkingDirectory = $App
         $lnk.IconLocation = "$icone,0"
-        $lnk.Description = "Configurar a tela de telemetria"
+        $lnk.Description = "PULSE — System Telemetry"
         $lnk.Save()
     }
-    Ok "Atalho 'Painel de Telemetria' na Área de Trabalho e no Menu Iniciar."
+    Ok "Atalho 'PULSE' na Área de Trabalho e no Menu Iniciar."
 } catch { Aviso "Não foi possível criar os atalhos: $_" }
 # a janela de configuração pode ser aberta sem administrador: libera escrita na pasta para os usuários
 $eap = $ErrorActionPreference; $ErrorActionPreference = "Continue"
@@ -234,11 +239,11 @@ if %errorlevel% neq 0 (
   powershell -NoProfile -Command "Start-Process -Verb RunAs -FilePath '%~f0'"
   exit /b
 )
-title Painel - diagnostico
+title PULSE - diagnostico
 cd /d "$App"
 schtasks /End /TN $NomeTarefa >nul 2>&1
 "$PyVenv" painel\parar_painel.py
-echo Iniciando o painel com log na tela...
+echo Iniciando o PULSE com log na tela...
 "$PyVenv" main.py
 echo.
 echo O painel parou. Tire um print desta janela e mande no chat.
@@ -258,7 +263,8 @@ if (-not $SemInicioAutomatico) {
     $config = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
         -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
     Register-ScheduledTask -TaskName $NomeTarefa -Action $acao -Trigger $gatilho -Principal $principal `
-        -Settings $config -Force | Out-Null
+        -Settings $config -Description "PULSE — System Telemetry: liga a tela e o ícone da bandeja ao entrar no Windows" `
+        -Force | Out-Null
     Ok "Tarefa '$NomeTarefa' criada para $usuario (roda como administrador, exigido pelo LibreHardwareMonitor)."
 }
 
@@ -268,6 +274,6 @@ if ($Simulador) { Ok "Abra http://localhost:5678 no navegador para ver a tela si
 
 Write-Host ""
 Write-Host "Pronto! Pasta do painel: $Destino" -ForegroundColor Green
-Write-Host " - Ícone 'Painel de Telemetria' na bandeja (perto do relógio) e na Área de Trabalho:"
+Write-Host " - Ícone do PULSE na bandeja (perto do relógio) e atalho 'PULSE' na Área de Trabalho:"
 Write-Host "   temas, blocos, cores, brilho e perfis Trabalho/Jogos"
 Write-Host " - 'Rodar com log (diagnostico).bat': mostra erros, se algo não aparecer"
