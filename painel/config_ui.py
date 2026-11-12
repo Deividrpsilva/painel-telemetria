@@ -41,6 +41,7 @@ from urllib.parse import unquote
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gerador  # noqa: E402
 import iniciar  # noqa: E402  (perfis e caminhos do iniciador)
+import tela_usb  # noqa: E402  (estado da conexão com a tela USB: tela.json)
 from parar_painel import parar_main  # noqa: E402
 
 APP_DIR = gerador.APP_DIR
@@ -175,6 +176,17 @@ def painel_rodando():
     return iniciar.enviar_comando("ping")
 
 
+def estado_tela():
+    """Estado da tela USB gravado pelo programa da tela e pelo iniciador (painel/tela_usb.py)."""
+    d = tela_usb.ler_estado()
+    d["iniciador"] = painel_rodando()
+    if d.get("estado") and not d["iniciador"]:
+        d.update(estado="parado", mensagem="O programa da tela não está rodando",
+                 detalhe="Clique em “Aplicar na tela” para iniciá-lo (ou reinicie o computador).")
+    d["resumo"] = tela_usb.resumo(d)
+    return d
+
+
 def reiniciar_painel():
     """O iniciador (painel/iniciar.py, ícone da bandeja) mantém o main.py aberto; basta pedir para ele reabrir."""
     if iniciar.enviar_comando("reiniciar"):
@@ -248,6 +260,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True})
             if caminho in ("/", "/index.html"):
                 return self._send(200, HTML.read_bytes(), "text/html; charset=utf-8")
+            if caminho == "/api/tela":
+                return self._json(estado_tela())
             if caminho == "/api/estado":
                 cfg = ler_config()
                 return self._json({
@@ -263,6 +277,7 @@ class Handler(BaseHTTPRequestHandler):
                     "padrao": gerador.completar(None),
                     "admin": _eh_admin() or painel_rodando(),
                     "versao": VERSAO,
+                    "tela": estado_tela(),
                 })
             if caminho.startswith("/api/tema/"):
                 pasta = caminho[len("/api/tema/"):]

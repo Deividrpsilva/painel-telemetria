@@ -78,6 +78,7 @@ O painel usa o **[turing-smart-screen-python](https://github.com/mathoudebine/tu
 | `painel/splash.py` | Tela de inicialização (Tkinter): logo animado e progresso real recebido em `127.0.0.1:5683`; fecha sozinha se o carregamento falhar |
 | `painel/iniciar.py` | Ícone da bandeja, perfis automáticos por tela cheia e vigia que mantém a tela rodando; recebe comandos em `127.0.0.1:5681` |
 | `painel/troca_tema.py` | Roda dentro do programa da tela e troca tema e brilho sem reiniciar; recebe comandos em `127.0.0.1:5682` |
+| `painel/tela_usb.py` | Roda dentro do programa da tela e cuida da porta COM: acha a tela pela VID/PID em qualquer COM, espera se ela não está ligada ou se a porta está ocupada, reconecta depois do reset ou de uma queda e grava o estado em `tela.json` |
 | `painel/abrir.py` | Alvo do atalho "PULSE": mostra a splash e pede a janela ao iniciador |
 | `painel/parar_painel.py` | Encerra os processos do painel (usado pelo instalador) |
 | `sensores/sensors_custom.py` | Sensores extras: temperaturas com cor dinâmica, watts, VRAM, FPS/frametime e média da sessão, volume do alto-falante e do microfone, SSD, nomes do hardware |
@@ -94,8 +95,22 @@ C:\PainelTelemetria
 ├── temas\            seus temas (*.json), mantidos ao reinstalar
 ├── fundos\           imagens de fundo enviadas pela configuração
 ├── perfis.json       temas dos perfis Trabalho e Jogos
-└── iniciar.log       registro de trocas de perfil e reinícios
+├── tela.json         estado da conexão com a tela USB (porta, conectada, ocupada...)
+├── iniciar.log       registro de trocas de perfil, reinícios e por que a tela parou
+└── main_saida.log    erros do programa da tela que não chegam ao app\log.log
 ```
+
+### A tela não mostra nada
+
+A janela de configuração mostra o estado da tela USB embaixo da prévia. O `app\log.log` tem cada etapa da conexão em português:
+
+| No log | O que fazer |
+|---|---|
+| `Nenhuma porta COM com VID 1A86 / PID 5722` | A tela não aparece no Windows: troque de entrada USB ou de cabo e confira em Gerenciador de Dispositivos > Portas (COM e LPT) |
+| `A porta COMx existe, mas outro programa está usando` | Feche o TURMO ou outro programa da tela; o PULSE conecta sozinho quando a porta for liberada |
+| `Encontradas 2 telas compatíveis` | Mostra qual porta foi usada e por quê; para fixar uma, ponha `COM_PORT: "COMx"` no `app\config.yaml` |
+| `Falha na comunicação com a tela` / `Tentando reconectar` | A tela caiu durante o uso; o programa da tela reabre e redesenha sozinho |
+| `Imagem enviada com sucesso` | A conexão está boa |
 
 ## Gerar o instalador
 

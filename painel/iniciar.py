@@ -38,6 +38,8 @@ PORTA_CONFIG = 5680              # janela de configuração (painel/config_ui.py
 PORTA_MAIN = 5682                # main.py: troca de tema/brilho sem reiniciar (painel/troca_tema.py)
 SIMULAR_JOGO = DESTINO / "simular_jogo.txt"   # para testes: se existir, finge que há um jogo em tela cheia
 PEDIDO_REINICIO = DESTINO / ".reiniciar"      # alternativa ao comando "reiniciar"
+SAIDA_MAIN = DESTINO / "main_saida.log"       # o que o main.py escreve fora do log (erros de import, tracebacks)
+LOG_MAIN = APP / "log.log"                    # log da biblioteca da tela
 ICONE_PNG = PAINEL / "pulse_tray.png"
 WINDOWS = platform.system() == "Windows"
 
@@ -45,6 +47,7 @@ PERFIS_PADRAO = {"auto": True, "trabalho": "Meu_Trabalho", "jogos": "Meu_Jogos",
 
 sys.path.insert(0, str(PAINEL))
 os.chdir(APP)
+import tela_usb  # noqa: E402  (só as funções de estado: tela.json)
 
 log = logging.getLogger("iniciar")
 
@@ -194,11 +197,61 @@ def nome_do_tema(pasta):
 
 
 def abrir_main():
-    env = dict(os.environ, PAINEL_SEM_BANDEJA="1")   # o ícone da bandeja é o deste iniciador
-    if WINDOWS:
-        return subprocess.Popen([_pythonw(), "main.py"], cwd=str(APP), env=env,
-                                creationflags=0x08000000)  # CREATE_NO_WINDOW
-    return subprocess.Popen([sys.executable, "main.py"], cwd=str(APP), env=env)
+    # o ícone da bandeja é o deste iniciador; a saída do main.py vai para main_saida.log (no pythonw ela sumia)
+    env = dict(os.environ, PAINEL_SEM_BANDEJA="1", PULSE_SAIDA="1", PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
+    try:
+        saida = open(SAIDA_MAIN, "w", encoding="utf-8")
+        saida.write(f"--- main.py aberto em {time.strftime('%d/%m %H:%M:%S')}\n")
+        saida.flush()
+    except OSError:
+        saida = subprocess.DEVNULL
+    try:
+        if WINDOWS:
+            return subprocess.Popen([_pythonw(), "main.py"], cwd=str(APP), env=env, stdout=saida,
+                                    stderr=subprocess.STDOUT, creationflags=0x08000000)  # CREATE_NO_WINDOW
+        return subprocess.Popen([sys.executable, "main.py"], cwd=str(APP), env=env, stdout=saida,
+                                stderr=subprocess.STDOUT)
+    finally:
+        if saida is not subprocess.DEVNULL:
+            saida.close()
+
+
+def _tamanho(arq):
+    try:
+        return arq.stat().st_size
+    except OSError:
+        return 0
+
+
+def _ler_trecho(arq, desde=0, maximo=64_000):
+    try:
+        with open(arq, "rb") as fh:
+            tam = fh.seek(0, 2)
+            if desde > tam:              # o log girou: lê do começo
+                desde = 0
+            fh.seek(max(desde, tam - maximo))
+            dados = fh.read()
+    except OSError:
+        return []
+    try:
+        texto = dados.decode("utf-8")
+    except UnicodeDecodeError:
+        texto = dados.decode("cp1252" if WINDOWS else "latin-1", "replace")
+    return [linha.strip() for linha in texto.splitlines() if linha.strip()]
+
+
+def motivo_saida(log_desde):
+    """Por que o main.py fechou: o último erro do log.log desta execução ou a última linha de um traceback."""
+    linhas = _ler_trecho(LOG_MAIN, log_desde)
+    saida = [x for x in _ler_trecho(SAIDA_MAIN) if not x.startswith("---")]
+
+    def ultima(nivel):
+        achadas = [x for x in linhas if nivel in x and "Too fast" not in x]
+        return achadas[-1].split(nivel, 1)[1].strip()[:300] if achadas else ""
+
+    erro_saida = next((x for x in reversed(saida) if "Error" in x or "error" in x or "Exception" in x), "")
+    return (ultima("[CRITICAL]") or ultima("[ERROR]") or erro_saida[:300] or ultima("[WARNING]")
+            or (saida[-1][:300] if saida else ""))
 
 
 def config_aberta():
@@ -242,13 +295,16 @@ class Painel:
         self.brilho = None
         self.icone = None
         self.reverso_em_uso = None       # DISPLAY_REVERSE com que o main.py abriu (mudar exige reiniciar)
+        self.log_main_desde = 0          # tamanho do log.log quando o main.py abriu (para achar o erro desta vez)
+        self.tela = ""                   # "Tela: funcionando (COM5)" (tela.json), mostrado na bandeja
         self.reinicio = threading.Event()
         self.fim = threading.Event()
         self.trava = threading.Lock()
 
     # ---------- estado (lido do disco a cada 3 s) ----------
     def atualizar_estado(self):
-        antes = (self.tema, self.brilho, self.perfis.get("auto"), self.perfis.get("trabalho"), self.perfis.get("jogos"))
+        antes = (self.tema, self.brilho, self.perfis.get("auto"), self.perfis.get("trabalho"), self.perfis.get("jogos"),
+                 self.tela)
         self.perfis = ler_perfis()
         try:
             cfg = ler_config()
@@ -257,7 +313,9 @@ class Painel:
         except Exception as e:
             log.info("config.yaml ilegível: %s", e)
         self.lido = time.monotonic()
-        depois = (self.tema, self.brilho, self.perfis.get("auto"), self.perfis.get("trabalho"), self.perfis.get("jogos"))
+        self.tela = tela_usb.resumo()
+        depois = (self.tema, self.brilho, self.perfis.get("auto"), self.perfis.get("trabalho"), self.perfis.get("jogos"),
+                  self.tela)
         if depois != antes:
             self.atualizar_icone()
 
@@ -270,7 +328,10 @@ class Painel:
                 rotulo = "Perfil Jogos"
             elif self.tema == self.perfis.get("trabalho"):
                 rotulo = "Perfil Trabalho"
-            self.icone.title = f"PULSE — System Telemetry\n{rotulo}: {nome_do_tema(self.tema)}"[:127]
+            titulo = f"PULSE — System Telemetry\n{rotulo}: {nome_do_tema(self.tema)}"
+            if self.tela:
+                titulo += f"\n{self.tela}"
+            self.icone.title = titulo[:127]
             self.icone.update_menu()
         except Exception as e:
             log.info("Falha ao atualizar o ícone: %s", e)
@@ -402,13 +463,24 @@ class Painel:
             vida = agora - self.inicio_proc
             self.falhas = 0 if vida > 60 else self.falhas + 1
             espera = min(60, 2 * (2 ** min(self.falhas, 5))) if self.falhas else 1.5
+            if codigo == tela_usb.CODIGO_RECONECTAR and self.falhas <= 3:
+                espera = 1.0             # a tela caiu: reabre já para reconectar e redesenhar
             self.proxima_abertura = agora + espera
-            log.info("main.py fechou (código %s); reabrindo em %.0f s", codigo, espera)
+            motivo = motivo_saida(self.log_main_desde)
+            log.info("main.py fechou (código %s)%s; reabrindo em %.0f s", codigo,
+                     f": {motivo}" if motivo else "", espera)
+            if codigo != tela_usb.CODIGO_RECONECTAR:
+                tela_usb.gravar_estado("parado", mensagem="O programa da tela fechou", detalhe=motivo or
+                                       f"código de saída {codigo}", codigo=codigo, pid=None)
+            self.atualizar_estado()
         if self.proc is None and agora >= self.proxima_abertura and not self.fim.is_set():
             try:
                 self.reverso_em_uso = bool(ler_config()["display"].get("DISPLAY_REVERSE", False))
             except Exception:
                 self.reverso_em_uso = None
+            self.log_main_desde = _tamanho(LOG_MAIN)
+            if tela_usb.ler_estado().get("estado") != "reconectando":
+                tela_usb.gravar_estado("iniciando", mensagem="Iniciando o programa da tela", detalhe="", pid=None)
             self.proc = abrir_main()
             self.inicio_proc = agora
 
@@ -489,7 +561,11 @@ def main():
     from parar_painel import parar_main
     parar_main()                          # um main.py antigo, aberto por fora, seguraria a porta da tela
     PEDIDO_REINICIO.unlink(missing_ok=True)
-    log.info("Iniciador ligado.")
+    admin = tela_usb.eh_admin()
+    log.info("Iniciador ligado (administrador: %s).", "sim" if admin else "não")
+    if not admin:
+        log.info("Sem administrador algumas leituras (temperatura da CPU) ficam vazias. A tarefa '%s' "
+                 "do Windows abre o PULSE como administrador.", "PainelTelemetria")
 
     painel = Painel()
     painel.atualizar_estado()

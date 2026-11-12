@@ -7,6 +7,14 @@
 - Botão **Sobre** na configuração: versão instalada, desenvolvedor, repositório, tecnologias e créditos.
 - Janela, bandeja, atalhos ("PULSE"), instalador e "Adicionar ou remover programas" com o novo nome. A pasta `C:\PainelTelemetria`, a tarefa de inicialização e os temas continuam os mesmos, então a atualização mantém tudo.
 - Instalador renomeado para `PULSE-Setup.exe`.
+- Conexão com a tela USB mais confiável, em qualquer número de porta COM:
+  - a tela é procurada pela VID 1A86 / PID 5722 (ou série USB35INCHIPSV2); um `COM_PORT` fixo continua valendo;
+  - tela ausente ou porta ocupada (TURMO aberto, por exemplo) não fecham mais o programa: ele espera, tenta de novo e diz quem pode estar com a porta;
+  - depois do reset da tela a porta é procurada de novo, mesmo que volte com outro número;
+  - com várias telas compatíveis, prefere a que funcionou da última vez e registra a escolha;
+  - cabo desconectado, erro de escrita ou envio travado: o programa da tela reabre na hora, reconecta e redesenha;
+  - sem administrador a tela continua funcionando (só as leituras que exigem administrador ficam vazias).
+- Diagnóstico: log em português com cada etapa (procura, porta, conexão, envio da imagem) e o motivo técnico de cada falha; o `iniciar.log` diz por que o programa da tela fechou; estado da tela na janela de configuração e no ícone da bandeja (`tela.json`).
 
 ## 6.1
 - Troca de tema quase instantânea, como no TURMO: o programa da tela não fecha mais; só redesenha o fundo e os valores (cerca de 0,1 s no simulador, mais o tempo de envio pela USB).

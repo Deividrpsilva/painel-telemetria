@@ -61,8 +61,17 @@ O QUE O "MEU PAINEL" MOSTRA
   Áudio dividido: volume do alto-falante e do microfone (MUDO quando silenciado)
 
 PROBLEMAS
+  - A janela de configuração mostra o estado da tela USB embaixo da prévia (e um aviso no
+    topo quando há problema). O ícone da bandeja mostra o mesmo ao passar o mouse.
+  - Tela apagada com "porta ocupada": feche o TURMO ou outro programa da tela (inclusive no
+    ícone perto do relógio). O PULSE conecta sozinho assim que a porta for liberada.
+  - Tela apagada com "tela USB não encontrada": troque de entrada USB e veja se ela aparece em
+    Gerenciador de Dispositivos > Portas (COM e LPT). Não precisa escolher a porta COM.
+  - C:\PainelTelemetria\app\log.log: cada etapa da conexão com a tela (portas encontradas,
+    porta escolhida, conexão, envio da imagem) e o motivo técnico de cada falha.
+  - C:\PainelTelemetria\iniciar.log registra trocas de perfil, reinícios e por que o programa
+    da tela fechou. main_saida.log guarda erros que não chegam ao log.log.
   - C:\PainelTelemetria\"Rodar com log (diagnostico).bat" mostra os erros da tela.
-  - C:\PainelTelemetria\iniciar.log registra trocas de perfil e reinícios.
   - FPS vem do driver AMD via LibreHardwareMonitor: mostra "--" fora de jogos
     e em placas que não fornecem esse sensor.
   - Watts: vêm do LibreHardwareMonitor (CPU "Package" e GPU "Total/Board"). Mostra "--" se

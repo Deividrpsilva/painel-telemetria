@@ -89,6 +89,11 @@
   #status.ok { color: var(--ok); } #status.erro { color: var(--erro); }
   .aviso { background: #3a2a10; border: 1px solid #6b4e1a; color: #ffd28a; padding: 10px 14px; border-radius: 10px; margin-bottom: 16px; display: none; }
   .escondido { display: none !important; }
+  .estadoTela { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--fraco); max-width: 350px; }
+  .estadoTela .ponto { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; background: var(--fraco); }
+  .estadoTela.ok .ponto { background: var(--ok); } .estadoTela.ok b { color: var(--texto); }
+  .estadoTela.espera .ponto { background: #ffd28a; }
+  .estadoTela.erro .ponto { background: var(--erro); } .estadoTela.erro b { color: var(--erro); }
   .form-novo { background: var(--painel2); border: 1px solid var(--acento); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
   .form-novo input[type=text] { background: var(--painel); border: 1px solid var(--borda); color: var(--texto); border-radius: 8px; padding: 6px 10px; font: inherit; min-width: 200px; }
   .form-novo select { font-size: 13px; padding: 5px 8px; }
@@ -170,6 +175,7 @@
 </dialog>
 <main>
   <div>
+    <div class="aviso" id="avisoTela"></div>
     <div class="aviso" id="avisoAdmin">O painel da tela não está rodando. Clique em “Aplicar na tela” para iniciá-lo (ou reinicie o computador).</div>
 
     <section>
@@ -268,6 +274,7 @@
   <div class="lado">
     <div class="tela"><img id="previa" alt="Prévia da tela"></div>
     <div class="nota" id="notaPrevia"></div>
+    <div class="estadoTela" id="estadoTela" title=""><span class="ponto"></span><span id="estadoTelaTxt"></span></div>
   </div>
 </main>
 <footer>
@@ -314,10 +321,35 @@ async function carregar(selecionar) {
   $("#brilho").value = E.brilho; $("#brilhoVal").textContent = E.brilho + "%";
   $("#inverter").checked = E.inverter;
   $("#avisoAdmin").style.display = E.admin ? "none" : "block";
+  mostrarTela(E.tela);
   $("#opFonte").innerHTML = E.fontes.map(f => `<option>${esc(f)}</option>`).join("");
   desenharPerfis();
   await selecionar_tema(temaSel, false);
 }
+
+// estado da conexão com a tela USB (tela.json, atualizado pelo programa da tela)
+const TELA_OK = ["ok"], TELA_ESPERA = ["iniciando", "procurando", "conectada", "enviando", "reconectando"];
+function mostrarTela(t) {
+  const caixa = $("#estadoTela"), aviso = $("#avisoTela");
+  if (!t || !t.estado) { caixa.style.display = "none"; aviso.style.display = "none"; return; }
+  const classe = TELA_OK.includes(t.estado) ? "ok" : TELA_ESPERA.includes(t.estado) ? "espera" : "erro";
+  caixa.className = "estadoTela " + classe;
+  caixa.style.display = "flex";
+  let txt = `<b>Tela USB:</b> ${esc(t.mensagem || t.estado)}`;
+  if (t.admin === false) txt += " · sem administrador (algumas temperaturas ficam vazias)";
+  $("#estadoTelaTxt").innerHTML = txt;
+  caixa.title = t.dispositivo || "";
+  // problema que pede uma ação: explica no topo (o PULSE continua tentando sozinho)
+  const jaAvisado = t.estado === "parado" && E && !E.admin;      // esse caso já tem o aviso de baixo
+  if (classe === "erro" && !jaAvisado) {
+    aviso.innerHTML = `<b>${esc(t.mensagem || "Problema na tela USB")}.</b> ${esc(t.detalhe || "")}` +
+      (t.iniciador ? " O PULSE continua tentando sozinho." : "");
+    aviso.style.display = "block";
+  } else {
+    aviso.style.display = "none";
+  }
+}
+setInterval(() => api("/api/tela").then(mostrarTela).catch(() => {}), 3000);
 
 async function salvarAtual() {
   if (P && temaInfo() && temaInfo().editavel) await api("/api/tema/salvar", {pasta: temaSel, cfg: P});
