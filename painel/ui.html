@@ -3,18 +3,39 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Painel de Telemetria</title>
+<title>PULSE — System Telemetry</title>
 <style>
   :root {
-    --bg: #0b0e17; --painel: #131826; --painel2: #1a2032; --borda: #262e45;
-    --texto: #e3e8f4; --fraco: #8590ab; --acento: #3dd6f5; --ok: #50e696; --erro: #ff6b7d;
+    /* PULSE: preto, grafite, azul profundo, ciano, branco e cinza */
+    --bg: #000000; --painel: #101722; --painel2: #162234; --borda: #22324A;
+    --texto: #F5F7FA; --fraco: #8B9BAD; --acento: #00E5FF; --acento2: #00D1E8; --ok: #50e696; --erro: #ff6b7d;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--texto);
          font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif; }
-  header { padding: 18px 28px; border-bottom: 1px solid var(--borda); display: flex; align-items: center; gap: 12px; }
-  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
-  header .sub { color: var(--fraco); }
+  header { padding: 14px 28px; border-bottom: 1px solid var(--borda); display: flex; align-items: center; gap: 16px; }
+  header h1 { margin: 0; line-height: 0; }
+  header .logo { height: 36px; width: auto; display: block; }
+  header .sub { color: var(--fraco); border-left: 1px solid var(--borda); padding-left: 16px; }
+  header .btn { margin-left: auto; }
+  .btn:hover { border-color: var(--acento2); }
+  .btn.prim:hover { background: var(--acento2); }
+  dialog { background: var(--painel); color: var(--texto); border: 1px solid var(--borda); border-radius: 14px;
+           padding: 0; width: min(560px, calc(100vw - 32px)); }
+  dialog::backdrop { background: #000000c0; }
+  .sobre-topo { background: #000; padding: 22px 24px 8px; text-align: center; border-bottom: 1px solid var(--borda); }
+  .logo-grande { width: 100%; max-width: 420px; height: auto; }
+  .sobre-corpo { padding: 18px 24px 22px; }
+  .sobre-corpo h3 { margin: 0 0 2px; font-size: 17px; }
+  .sobre-corpo .desc { color: var(--fraco); margin: 0 0 14px; }
+  .sobre-corpo dl { display: grid; grid-template-columns: 150px 1fr; gap: 6px 12px; margin: 0 0 14px; }
+  .sobre-corpo dt { color: var(--fraco); }
+  .sobre-corpo dd { margin: 0; }
+  .sobre-corpo a { color: var(--acento); }
+  .sobre-corpo h4 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--fraco); margin: 14px 0 6px; font-weight: 600; }
+  .sobre-corpo ul { margin: 0; padding-left: 18px; color: var(--texto); }
+  .sobre-corpo li { margin: 2px 0; }
+  .sobre-corpo .rodape { display: flex; justify-content: flex-end; margin-top: 18px; }
   main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 24px; padding: 24px 28px 110px; max-width: 1280px; margin: 0 auto; }
   @media (max-width: 900px) { main { grid-template-columns: 1fr; } .lado { position: static !important; } }
   section { background: var(--painel); border: 1px solid var(--borda); border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; }
@@ -62,12 +83,17 @@
   .tela { background: #000; border-radius: 18px; padding: 14px; border: 1px solid var(--borda); display: flex; justify-content: center; }
   .tela img { width: 320px; height: 480px; object-fit: contain; display: block; }
   .nota { color: var(--fraco); font-size: 12px; margin-top: 10px; }
-  footer { position: fixed; left: 0; right: 0; bottom: 0; background: #0b0e17ee; border-top: 1px solid var(--borda);
+  footer { position: fixed; left: 0; right: 0; bottom: 0; background: #000000e6; border-top: 1px solid var(--borda);
            padding: 14px 28px; display: flex; align-items: center; gap: 12px; backdrop-filter: blur(6px); }
   #status { color: var(--fraco); }
   #status.ok { color: var(--ok); } #status.erro { color: var(--erro); }
   .aviso { background: #3a2a10; border: 1px solid #6b4e1a; color: #ffd28a; padding: 10px 14px; border-radius: 10px; margin-bottom: 16px; display: none; }
   .escondido { display: none !important; }
+  .estadoTela { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--fraco); max-width: 350px; }
+  .estadoTela .ponto { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; background: var(--fraco); }
+  .estadoTela.ok .ponto { background: var(--ok); } .estadoTela.ok b { color: var(--texto); }
+  .estadoTela.espera .ponto { background: #ffd28a; }
+  .estadoTela.erro .ponto { background: var(--erro); } .estadoTela.erro b { color: var(--erro); }
   .form-novo { background: var(--painel2); border: 1px solid var(--acento); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
   .form-novo input[type=text] { background: var(--painel); border: 1px solid var(--borda); color: var(--texto); border-radius: 8px; padding: 6px 10px; font: inherit; min-width: 200px; }
   .form-novo select { font-size: 13px; padding: 5px 8px; }
@@ -81,9 +107,75 @@
 </style>
 </head>
 <body>
-<header><h1>Painel de Telemetria</h1><span class="sub">Tela 3,5"</span></header>
+<header><h1><svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 159 40" width="159" height="40" role="img" aria-label="PULSE — System Telemetry"><path d="M2 20 L12 20 L16 16 L20 20 L23 20 L26 23 L31 3 L37 34 L41 17 L44 20 L46 20" fill="none" stroke="#00E5FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M52.01 21V1H62.62Q64.77 1 66.12 1.46Q67.47 1.92 68.19 2.78Q68.91 3.64 69.18 4.86Q69.45 6.08 69.45 7.57Q69.45 8.94 69.2 10.13Q68.94 11.32 68.22 12.22Q67.5 13.12 66.14 13.62Q64.78 14.11 62.54 14.11H56.19V21ZM56.19 10.85H60.95Q62.48 10.85 63.36 10.69Q64.24 10.53 64.66 10.17Q65.08 9.8 65.2 9.17Q65.32 8.54 65.32 7.57Q65.32 6.6 65.21 5.95Q65.1 5.31 64.68 4.95Q64.26 4.58 63.41 4.42Q62.56 4.26 61.05 4.26H56.19ZM83.87 21.23Q81.44 21.23 79.81 20.99Q78.17 20.75 77.16 20.14Q76.15 19.53 75.62 18.48Q75.08 17.42 74.91 15.83Q74.73 14.23 74.73 11.95V1H78.91V12.87Q78.91 14.48 79.03 15.48Q79.16 16.47 79.6 17Q80.04 17.52 81.06 17.7Q82.08 17.89 83.85 17.89Q85.65 17.89 86.64 17.7Q87.63 17.52 88.08 17Q88.53 16.47 88.65 15.48Q88.77 14.48 88.77 12.87V1H92.92V11.95Q92.92 14.23 92.75 15.83Q92.57 17.42 92.06 18.48Q91.56 19.53 90.56 20.14Q89.57 20.75 87.94 20.99Q86.31 21.23 83.87 21.23ZM99.63 21V1H103.8V17.6H114.05V21ZM127.34 21.23Q126.03 21.23 124.5 21.17Q122.96 21.11 121.48 21.01Q120 20.91 118.79 20.76V17.58Q120.06 17.69 121.41 17.78Q122.75 17.86 123.99 17.91Q125.23 17.95 126.09 17.95Q127.81 17.95 128.78 17.86Q129.75 17.76 130.29 17.49Q130.69 17.28 130.85 16.96Q131.01 16.65 131.04 16.21Q131.08 15.77 131.08 15.26Q131.08 14.61 131.02 14.19Q130.95 13.76 130.75 13.52Q130.55 13.28 130.11 13.16Q129.67 13.04 128.96 12.97L123.49 12.42Q121.84 12.25 120.77 11.9Q119.71 11.54 119.14 10.87Q118.57 10.2 118.34 9.17Q118.12 8.13 118.12 6.62Q118.12 4.57 118.75 3.39Q119.38 2.21 120.53 1.65Q121.68 1.08 123.21 0.92Q124.75 0.77 126.56 0.77Q127.89 0.77 129.3 0.84Q130.7 0.91 131.97 1.04Q133.24 1.17 134.12 1.34V4.46Q133.22 4.31 132.04 4.22Q130.85 4.14 129.58 4.09Q128.32 4.05 127.2 4.05Q125.66 4.05 124.69 4.14Q123.72 4.24 123.18 4.48Q122.54 4.74 122.43 5.24Q122.31 5.74 122.31 6.46Q122.31 7.31 122.43 7.76Q122.54 8.22 123.06 8.42Q123.58 8.62 124.76 8.74L130.33 9.29Q131.31 9.37 132.13 9.58Q132.95 9.78 133.57 10.19Q134.2 10.6 134.6 11.39Q134.83 11.82 134.98 12.37Q135.13 12.93 135.2 13.6Q135.28 14.27 135.28 15.12Q135.28 16.9 134.87 18.05Q134.46 19.19 133.73 19.84Q133 20.5 132 20.8Q131.01 21.1 129.82 21.16Q128.63 21.23 127.34 21.23ZM141.23 21V1H157.08V4.28H145.39V9.29H155.41V12.55H145.39V17.72H157.08V21Z" fill="#F5F7FA"/><path d="M53.95 32.1Q53.68 32.1 53.35 32.09Q53.03 32.07 52.72 32.05Q52.41 32.02 52.15 32V31.31Q52.41 31.33 52.7 31.35Q52.99 31.38 53.25 31.39Q53.52 31.4 53.71 31.4Q54.09 31.4 54.32 31.36Q54.54 31.33 54.67 31.25Q54.76 31.19 54.8 31.1Q54.84 31.01 54.85 30.89Q54.86 30.77 54.86 30.62Q54.86 30.42 54.84 30.29Q54.83 30.16 54.78 30.09Q54.73 30.01 54.62 29.98Q54.51 29.94 54.33 29.93L53.13 29.79Q52.78 29.74 52.56 29.63Q52.33 29.53 52.21 29.35Q52.09 29.18 52.05 28.94Q52 28.7 52 28.4Q52 27.91 52.13 27.62Q52.27 27.33 52.51 27.19Q52.75 27.04 53.09 26.99Q53.43 26.94 53.84 26.94Q54.13 26.94 54.43 26.96Q54.73 26.98 55 27Q55.26 27.03 55.44 27.07V27.74Q55.25 27.71 55.01 27.69Q54.77 27.67 54.5 27.66Q54.24 27.64 54.01 27.64Q53.62 27.64 53.4 27.68Q53.17 27.71 53.04 27.78Q52.89 27.87 52.86 28.01Q52.83 28.15 52.83 28.36Q52.83 28.62 52.87 28.75Q52.9 28.88 53.03 28.93Q53.15 28.98 53.39 29.01L54.6 29.15Q54.82 29.18 55.01 29.23Q55.19 29.28 55.33 29.38Q55.47 29.49 55.56 29.7Q55.61 29.8 55.63 29.93Q55.66 30.06 55.68 30.22Q55.69 30.38 55.69 30.58Q55.69 31 55.61 31.28Q55.53 31.56 55.37 31.72Q55.22 31.88 55.01 31.97Q54.79 32.05 54.52 32.08Q54.26 32.1 53.95 32.1ZM60.17 32.04V30.19L58.39 27H59.27L60.58 29.37H60.63L61.93 27H62.78L61 30.19V32.04ZM67.43 32.1Q67.16 32.1 66.83 32.09Q66.51 32.07 66.2 32.05Q65.89 32.02 65.63 32V31.31Q65.89 31.33 66.18 31.35Q66.47 31.38 66.74 31.39Q67 31.4 67.19 31.4Q67.58 31.4 67.8 31.36Q68.02 31.33 68.15 31.25Q68.24 31.19 68.28 31.1Q68.32 31.01 68.33 30.89Q68.34 30.77 68.34 30.62Q68.34 30.42 68.32 30.29Q68.31 30.16 68.26 30.09Q68.21 30.01 68.1 29.98Q67.99 29.94 67.81 29.93L66.61 29.79Q66.26 29.74 66.04 29.63Q65.81 29.53 65.69 29.35Q65.57 29.18 65.53 28.94Q65.48 28.7 65.48 28.4Q65.48 27.91 65.61 27.62Q65.75 27.33 65.99 27.19Q66.23 27.04 66.57 26.99Q66.91 26.94 67.32 26.94Q67.61 26.94 67.91 26.96Q68.21 26.98 68.48 27Q68.74 27.03 68.92 27.07V27.74Q68.74 27.71 68.49 27.69Q68.25 27.67 67.98 27.66Q67.72 27.64 67.49 27.64Q67.11 27.64 66.88 27.68Q66.65 27.71 66.52 27.78Q66.37 27.87 66.35 28.01Q66.32 28.15 66.32 28.36Q66.32 28.62 66.35 28.75Q66.39 28.88 66.51 28.93Q66.63 28.98 66.88 29.01L68.08 29.15Q68.3 29.18 68.49 29.23Q68.67 29.28 68.81 29.38Q68.96 29.49 69.04 29.7Q69.09 29.8 69.11 29.93Q69.14 30.06 69.16 30.22Q69.17 30.38 69.17 30.58Q69.17 31 69.09 31.28Q69.01 31.56 68.86 31.72Q68.7 31.88 68.49 31.97Q68.27 32.05 68 32.08Q67.74 32.1 67.43 32.1ZM73.53 32.04V27.73H72V27H75.89V27.73H74.36V32.04ZM78.94 32.04V27H82.3V27.7H79.77V29.15H81.96V29.85H79.77V31.34H82.3V32.04ZM85.58 32.04V27H86.71L88.19 30.67H88.23L89.71 27H90.84V32.04H90.04V28.28H90.01L88.49 32.04H87.9L86.39 28.28H86.36V32.04ZM99.39 32.04V27.73H97.86V27H101.75V27.73H100.22V32.04ZM104.8 32.04V27H108.16V27.7H105.63V29.15H107.82V29.85H105.63V31.34H108.16V32.04ZM111.44 32.04V27H112.27V31.32H114.51V32.04ZM117.59 32.04V27H120.96V27.7H118.42V29.15H120.61V29.85H118.42V31.34H120.96V32.04ZM124.23 32.04V27H125.37L126.85 30.67H126.89L128.37 27H129.5V32.04H128.69V28.28H128.66L127.14 32.04H126.56L125.04 28.28H125.01V32.04ZM133.04 32.04V27H136.4V27.7H133.87V29.15H136.06V29.85H133.87V31.34H136.4V32.04ZM140.72 32.04V27.73H139.19V27H143.08V27.73H141.55V32.04ZM146.13 32.04V27H148.49Q148.97 27 149.26 27.11Q149.55 27.22 149.7 27.43Q149.85 27.64 149.9 27.93Q149.95 28.22 149.95 28.56Q149.95 28.81 149.9 29.11Q149.85 29.4 149.7 29.65Q149.54 29.89 149.2 30.01L150.03 32.04H149.15L148.34 29.98L148.56 30.09Q148.5 30.11 148.44 30.12Q148.37 30.12 148.27 30.12H146.96V32.04ZM146.96 29.42H148.14Q148.48 29.42 148.68 29.37Q148.88 29.32 148.97 29.22Q149.07 29.12 149.09 28.96Q149.12 28.79 149.12 28.56Q149.12 28.32 149.09 28.16Q149.07 27.99 148.98 27.89Q148.89 27.79 148.7 27.75Q148.5 27.7 148.16 27.7H146.96ZM154.47 32.04V30.19L152.69 27H153.57L154.88 29.37H154.93L156.23 27H157.08L155.3 30.19V32.04Z" fill="#8B9BAD"/></svg></h1><span class="sub">Tela 3,5"</span><button class="btn" id="btnSobre">Sobre</button></header>
+<dialog id="sobre" aria-labelledby="sobreTitulo">
+  <div class="sobre-topo">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" class="logo-grande" role="img" aria-label="PULSE — System Telemetry">
+  <defs>
+    <linearGradient id="gEcg" x1="130" y1="0" x2="1062" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#00E5FF" stop-opacity="0"/>
+      <stop offset="0.12" stop-color="#00E5FF" stop-opacity="1"/>
+      <stop offset="1" stop-color="#00E5FF" stop-opacity="1"/>
+    </linearGradient>
+    <linearGradient id="gCima" x1="413" y1="0" x2="827" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#00D1E8" stop-opacity="0.15"/>
+      <stop offset="0.55" stop-color="#00D1E8" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#00D1E8" stop-opacity="1"/>
+    </linearGradient>
+    <linearGradient id="gBaixo" x1="426" y1="0" x2="814" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#00D1E8" stop-opacity="0.35"/>
+      <stop offset="0.45" stop-color="#00D1E8" stop-opacity="1"/>
+      <stop offset="1" stop-color="#00D1E8" stop-opacity="0.2"/>
+    </linearGradient>
+    <filter id="brilho" x="-20%" y="-60%" width="140%" height="220%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b"/>
+      <feComponentTransfer in="b" result="b2"><feFuncA type="linear" slope="0.75"/></feComponentTransfer>
+      <feMerge><feMergeNode in="b2"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g filter="url(#brilho)">
+    <path d="M827.4 159.2 A228 228 0 0 0 412.8 224.8" fill="none" stroke="url(#gCima)" stroke-width="5" stroke-linecap="round"/>
+    <path d="M425.7 372.7 A228 228 0 0 0 813.7 420.4" fill="none" stroke="url(#gBaixo)" stroke-width="5" stroke-linecap="round"/>
+    <path d="M130.0 300.0 L248.0 300.0 L266.0 284.0 L284.0 300.0 L302.0 300.0 L316.0 314.0 L342.0 124.0 L370.0 396.0 L390.0 278.0 L404.0 300.0 L1061.5 300.0" fill="none" stroke="url(#gEcg)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="1061.5" cy="300" r="9" fill="#00E5FF"/>
+  </g>
+  <g>
+    <path d="M438.07 282V166H499.57Q512.07 166 519.89 168.68Q527.71 171.35 531.89 176.32Q536.07 181.3 537.64 188.37Q539.21 195.45 539.21 204.1Q539.21 212.06 537.73 218.96Q536.26 225.87 532.09 231.1Q527.92 236.32 520.02 239.18Q512.12 242.03 499.13 242.03H462.28V282ZM462.28 223.13H489.89Q498.81 223.13 503.9 222.21Q508.99 221.29 511.41 219.17Q513.84 217.05 514.55 213.38Q515.26 209.71 515.26 204.1Q515.26 198.47 514.62 194.74Q513.98 191.01 511.56 188.89Q509.13 186.77 504.19 185.85Q499.25 184.92 490.47 184.92H462.28ZM622.87 283.35Q608.77 283.35 599.29 281.94Q589.81 280.53 583.94 277.01Q578.06 273.49 574.97 267.38Q571.88 261.26 570.85 251.99Q569.82 242.71 569.82 229.51V166H594.06V234.83Q594.06 244.2 594.78 249.97Q595.5 255.75 598.07 258.77Q600.64 261.8 606.55 262.89Q612.46 263.98 622.72 263.98Q633.17 263.98 638.92 262.89Q644.67 261.8 647.29 258.77Q649.9 255.75 650.59 249.97Q651.28 244.2 651.28 234.83V166H675.35V229.51Q675.35 242.71 674.32 251.99Q673.29 261.26 670.37 267.38Q667.45 273.5 661.67 277.02Q655.88 280.54 646.43 281.94Q636.98 283.35 622.87 283.35ZM714.24 282V166H738.46V262.26H797.89V282ZM874.95 283.35Q867.37 283.35 858.47 283Q849.57 282.65 840.99 282.05Q832.41 281.45 825.37 280.63V262.14Q832.77 262.8 840.57 263.3Q848.37 263.81 855.56 264.06Q862.75 264.31 867.74 264.31Q877.72 264.31 883.34 263.77Q888.96 263.22 892.07 261.67Q894.39 260.43 895.32 258.59Q896.24 256.74 896.46 254.19Q896.68 251.64 896.68 248.71Q896.68 244.95 896.31 242.48Q895.94 240 894.75 238.62Q893.57 237.23 891.04 236.52Q888.51 235.81 884.37 235.45L852.67 232.23Q843.06 231.26 836.88 229.2Q830.7 227.14 827.39 223.26Q824.08 219.39 822.78 213.36Q821.47 207.34 821.47 198.59Q821.47 186.71 825.15 179.86Q828.83 173.01 835.47 169.74Q842.12 166.47 851.05 165.56Q859.98 164.65 870.45 164.65Q878.16 164.65 886.31 165.06Q894.46 165.47 901.83 166.24Q909.21 167.01 914.27 167.94V186.05Q909.1 185.2 902.21 184.7Q895.31 184.19 887.99 183.94Q880.67 183.69 874.18 183.69Q865.2 183.69 859.59 184.23Q853.98 184.78 850.87 186.16Q847.14 187.71 846.47 190.61Q845.81 193.5 845.81 197.67Q845.81 202.6 846.47 205.23Q847.14 207.87 850.15 209.04Q853.17 210.22 859.99 210.87L892.33 214.06Q897.98 214.57 902.74 215.75Q907.5 216.93 911.13 219.31Q914.77 221.69 917.07 226.27Q918.42 228.73 919.29 231.96Q920.15 235.18 920.58 239.09Q921.02 242.99 921.02 247.91Q921.02 258.22 918.65 264.86Q916.27 271.51 912.04 275.29Q907.8 279.08 902.02 280.82Q896.25 282.56 889.36 282.96Q882.48 283.35 874.95 283.35ZM955.51 282V166H1047.47V185.04H979.68V214.09H1037.76V233.02H979.68V262.96H1047.47V282Z" fill="#F5F7FA"/>
+    <path d="M504.78 343.24Q503.65 343.24 502.32 343.19Q500.99 343.14 499.72 343.04Q498.45 342.94 497.41 342.83V340.6Q498.49 340.69 499.7 340.78Q500.92 340.87 502.06 340.93Q503.19 340.98 504.01 340.98Q505.62 340.98 506.59 340.84Q507.57 340.7 508.24 340.31Q508.7 340.03 508.91 339.57Q509.11 339.12 509.17 338.51Q509.23 337.9 509.23 337.2Q509.23 336.16 509.16 335.52Q509.09 334.88 508.83 334.52Q508.57 334.17 508 334.01Q507.42 333.84 506.43 333.74L501.23 333.16Q499.77 332.99 498.88 332.55Q498 332.12 497.55 331.42Q497.1 330.72 496.95 329.77Q496.8 328.81 496.8 327.63Q496.8 325.71 497.31 324.54Q497.82 323.38 498.78 322.77Q499.75 322.17 501.15 321.96Q502.55 321.76 504.33 321.76Q505.5 321.76 506.73 321.82Q507.95 321.88 509.03 321.99Q510.11 322.1 510.82 322.25V324.4Q510.02 324.28 508.98 324.2Q507.94 324.11 506.85 324.07Q505.76 324.02 504.8 324.02Q503.1 324.02 502.07 324.18Q501.03 324.33 500.43 324.72Q499.75 325.12 499.59 325.84Q499.44 326.55 499.44 327.56Q499.44 328.76 499.6 329.4Q499.77 330.04 500.32 330.3Q500.88 330.56 502.01 330.7L507.12 331.26Q508.2 331.37 509.05 331.57Q509.9 331.77 510.5 332.22Q511.1 332.67 511.43 333.55Q511.6 333.95 511.69 334.47Q511.77 335 511.82 335.63Q511.87 336.26 511.87 337.03Q511.87 338.76 511.54 339.9Q511.21 341.05 510.59 341.72Q509.97 342.38 509.09 342.72Q508.21 343.06 507.13 343.15Q506.05 343.24 504.78 343.24ZM534.7 343V334.99L527.1 322H529.93L535.97 332.35H536.19L542.22 322H544.96L537.33 334.99V343ZM568.18 343.24Q567.05 343.24 565.72 343.19Q564.39 343.14 563.12 343.04Q561.85 342.94 560.8 342.83V340.6Q561.89 340.69 563.1 340.78Q564.31 340.87 565.45 340.93Q566.59 340.98 567.41 340.98Q569.01 340.98 569.99 340.84Q570.97 340.7 571.64 340.31Q572.1 340.03 572.3 339.57Q572.51 339.12 572.57 338.51Q572.63 337.9 572.63 337.2Q572.63 336.16 572.56 335.52Q572.49 334.88 572.23 334.52Q571.97 334.17 571.39 334.01Q570.82 333.84 569.83 333.74L564.63 333.16Q563.16 332.99 562.28 332.55Q561.4 332.12 560.94 331.42Q560.49 330.72 560.34 329.77Q560.19 328.81 560.19 327.63Q560.19 325.71 560.7 324.54Q561.21 323.38 562.18 322.77Q563.15 322.17 564.55 321.96Q565.95 321.76 567.72 321.76Q568.9 321.76 570.12 321.82Q571.35 321.88 572.43 321.99Q573.51 322.1 574.22 322.25V324.4Q573.41 324.28 572.38 324.2Q571.34 324.11 570.25 324.07Q569.16 324.02 568.2 324.02Q566.5 324.02 565.46 324.18Q564.42 324.33 563.82 324.72Q563.14 325.12 562.99 325.84Q562.83 326.55 562.83 327.56Q562.83 328.76 563 329.4Q563.16 330.04 563.72 330.3Q564.28 330.56 565.41 330.7L570.52 331.26Q571.6 331.37 572.45 331.57Q573.3 331.77 573.9 332.22Q574.5 332.67 574.83 333.55Q575 333.95 575.08 334.47Q575.17 335 575.22 335.63Q575.27 336.26 575.27 337.03Q575.27 338.76 574.94 339.9Q574.61 341.05 573.99 341.72Q573.37 342.38 572.49 342.72Q571.61 343.06 570.53 343.15Q569.45 343.24 568.18 343.24ZM597.69 343V324.33H591.06V322H606.95V324.33H600.31V343ZM623.74 343V322H637.39V324.27H626.36V331.26H635.95V333.53H626.36V340.73H637.39V343ZM654.96 343V322H658.52L665.67 338.71H665.82L672.99 322H676.52V343H673.96V326.21H673.84L666.65 343H664.73L657.56 326.21H657.44V343ZM719.94 343V324.33H713.3V322H729.19V324.33H722.56V343ZM745.98 343V322H759.63V324.27H748.61V331.26H758.2V333.53H748.61V340.73H759.63V343ZM777.21 343V322H779.83V340.67H789.64V343ZM806.45 343V322H820.1V324.27H809.07V331.26H818.66V333.53H809.07V340.73H820.1V343ZM837.67 343V322H841.23L848.38 338.71H848.54L855.7 322H859.23V343H856.67V326.21H856.55L849.36 343H847.44L840.27 326.21H840.15V343ZM878.15 343V322H891.8V324.27H880.77V331.26H890.36V333.53H880.77V340.73H891.8V343ZM913.88 343V324.33H907.25V322H923.14V324.33H916.51V343ZM939.93 343V322H949.57Q951.55 322 952.73 322.48Q953.9 322.96 954.48 323.83Q955.06 324.7 955.24 325.85Q955.42 327 955.42 328.33Q955.42 329.45 955.22 330.66Q955.02 331.86 954.34 332.84Q953.65 333.82 952.17 334.26L955.71 343H952.9L949.42 334.17L950.16 334.53Q949.95 334.61 949.64 334.63Q949.33 334.66 948.81 334.66H942.55V343ZM942.55 332.39H948.45Q949.96 332.39 950.84 332.13Q951.72 331.87 952.13 331.36Q952.55 330.85 952.67 330.1Q952.79 329.34 952.79 328.33Q952.79 327.3 952.68 326.54Q952.58 325.78 952.19 325.27Q951.8 324.77 950.97 324.52Q950.13 324.27 948.67 324.27H942.55ZM978.45 343V334.99L970.85 322H973.67L979.72 332.35H979.93L985.96 322H988.71L981.08 334.99V343Z" fill="#F5F7FA" fill-opacity="0.88"/>
+  </g>
+</svg>
+  </div>
+  <div class="sobre-corpo">
+    <h3 id="sobreTitulo">PULSE — System Telemetry</h3>
+    <p class="desc">Monitoramento e telemetria de hardware em tempo real.</p>
+    <dl>
+      <dt>Versão instalada</dt><dd id="sobreVersao">—</dd>
+      <dt>Desenvolvedor</dt><dd>Deivid Robinson</dd>
+      <dt>Repositório</dt><dd><a href="https://github.com/Deividrpsilva/painel-telemetria" target="_blank" rel="noopener">github.com/Deividrpsilva/painel-telemetria</a></dd>
+      <dt>Licença</dt><dd>GNU GPL-3.0</dd>
+    </dl>
+    <h4>Tecnologias</h4>
+    <ul>
+      <li>Python, com a janela em pywebview (WebView2 do Windows) e o ícone da bandeja em pystray</li>
+      <li>turing-smart-screen-python 3.10.0 para desenhar na tela USB de 3,5"</li>
+      <li>LibreHardwareMonitor para ler os sensores</li>
+      <li>Instalador feito com NSIS</li>
+    </ul>
+    <h4>Créditos das bibliotecas</h4>
+    <ul>
+      <li>turing-smart-screen-python, de Matthieu Houdebine e colaboradores (GPL-3.0)</li>
+      <li>LibreHardwareMonitor (MPL-2.0)</li>
+      <li>pywebview (BSD-3-Clause), pystray (LGPL-3.0), pythonnet (MIT)</li>
+      <li>Pillow (MIT-CMU), NumPy (BSD-3-Clause), psutil (BSD-3-Clause), pyserial (BSD-3-Clause)</li>
+      <li>PyYAML (MIT), ruamel.yaml (MIT), Babel (BSD-3-Clause), pycaw (MIT), comtypes (MIT), pywin32 (PSF)</li>
+      <li>Fonte Saira no logotipo (SIL Open Font License 1.1)</li>
+    </ul>
+    <div class="rodape"><button class="btn prim" id="sobreFechar">Fechar</button></div>
+  </div>
+</dialog>
 <main>
   <div>
+    <div class="aviso" id="avisoTela"></div>
     <div class="aviso" id="avisoAdmin">O painel da tela não está rodando. Clique em “Aplicar na tela” para iniciá-lo (ou reinicie o computador).</div>
 
     <section>
@@ -182,6 +274,7 @@
   <div class="lado">
     <div class="tela"><img id="previa" alt="Prévia da tela"></div>
     <div class="nota" id="notaPrevia"></div>
+    <div class="estadoTela" id="estadoTela" title=""><span class="ponto"></span><span id="estadoTelaTxt"></span></div>
   </div>
 </main>
 <footer>
@@ -222,15 +315,41 @@ function temaInfo(p = temaSel) { return E.temas.find(t => t.pasta === p); }
 
 async function carregar(selecionar) {
   E = await api("/api/estado");
+  $("#sobreVersao").textContent = E.versao || "—";
   temaSel = selecionar || temaSel || E.tema_atual;
   if (!temaInfo()) temaSel = E.temas[0] && E.temas[0].pasta;
   $("#brilho").value = E.brilho; $("#brilhoVal").textContent = E.brilho + "%";
   $("#inverter").checked = E.inverter;
   $("#avisoAdmin").style.display = E.admin ? "none" : "block";
+  mostrarTela(E.tela);
   $("#opFonte").innerHTML = E.fontes.map(f => `<option>${esc(f)}</option>`).join("");
   desenharPerfis();
   await selecionar_tema(temaSel, false);
 }
+
+// estado da conexão com a tela USB (tela.json, atualizado pelo programa da tela)
+const TELA_OK = ["ok"], TELA_ESPERA = ["iniciando", "procurando", "conectada", "enviando", "reconectando"];
+function mostrarTela(t) {
+  const caixa = $("#estadoTela"), aviso = $("#avisoTela");
+  if (!t || !t.estado) { caixa.style.display = "none"; aviso.style.display = "none"; return; }
+  const classe = TELA_OK.includes(t.estado) ? "ok" : TELA_ESPERA.includes(t.estado) ? "espera" : "erro";
+  caixa.className = "estadoTela " + classe;
+  caixa.style.display = "flex";
+  let txt = `<b>Tela USB:</b> ${esc(t.mensagem || t.estado)}`;
+  if (t.admin === false) txt += " · sem administrador (algumas temperaturas ficam vazias)";
+  $("#estadoTelaTxt").innerHTML = txt;
+  caixa.title = t.dispositivo || "";
+  // problema que pede uma ação: explica no topo (o PULSE continua tentando sozinho)
+  const jaAvisado = t.estado === "parado" && E && !E.admin;      // esse caso já tem o aviso de baixo
+  if (classe === "erro" && !jaAvisado) {
+    aviso.innerHTML = `<b>${esc(t.mensagem || "Problema na tela USB")}.</b> ${esc(t.detalhe || "")}` +
+      (t.iniciador ? " O PULSE continua tentando sozinho." : "");
+    aviso.style.display = "block";
+  } else {
+    aviso.style.display = "none";
+  }
+}
+setInterval(() => api("/api/tela").then(mostrarTela).catch(() => {}), 3000);
 
 async function salvarAtual() {
   if (P && temaInfo() && temaInfo().editavel) await api("/api/tema/salvar", {pasta: temaSel, cfg: P});
@@ -440,7 +559,12 @@ $("#aplicar").onclick = async () => {
   } catch (e) { status("Erro: " + e.message, "erro"); }
   b.disabled = false;
 };
-carregar();
+$("#btnSobre").onclick = () => $("#sobre").showModal();
+$("#sobreFechar").onclick = () => $("#sobre").close();
+$("#sobre").addEventListener("click", e => { if (e.target === $("#sobre")) $("#sobre").close(); });
+// primeira carga: avisa o programa que a interface está pronta (a janela aparece e a splash some)
+carregar().catch(e => status("Erro: " + e.message, "erro"))
+          .finally(() => setTimeout(() => fetch("/api/pronto").catch(() => {}), 0));
 setInterval(() => fetch("/api/ping").catch(() => {}), 20000);   // mantém o configurador aberto enquanto a página existir
 </script>
 </body>

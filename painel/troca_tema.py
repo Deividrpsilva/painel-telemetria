@@ -1,4 +1,4 @@
-# Painel de Telemetria - troca de tema sem reiniciar o programa da tela
+# PULSE — System Telemetry - troca de tema sem reiniciar o programa da tela
 #
 # O main.py do turing-smart-screen-python carrega o tema uma vez só e agenda as leituras dos
 # sensores com os intervalos desse tema. Para trocar de tema na hora (como o TURMO), este módulo,

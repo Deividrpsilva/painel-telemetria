@@ -1,4 +1,4 @@
-# Painel de Telemetria - gerador de temas personalizados
+# PULSE — System Telemetry - gerador de temas personalizados
 #
 # Cada tema do usuário é um JSON em C:\PainelTelemetria\temas\<pasta>.json (blocos, ordem, cores,
 # estilo...). Este módulo transforma esse JSON em res/themes/<pasta>/{background.png, theme.yaml,
@@ -737,7 +737,7 @@ def gerar(cfg: dict = None, destino: Path = None, com_previa: bool = True):
     destino.mkdir(parents=True, exist_ok=True)
     c.img.save(destino / "background.png")
     with open(destino / "theme.yaml", "w", encoding="utf-8") as fh:
-        fh.write("# Tema gerado pelo Painel de Telemetria (painel/gerador.py). Edite pelo 'Configurar painel'.\n")
+        fh.write("# Tema gerado pelo PULSE — System Telemetry (painel/gerador.py). Edite pela janela de configuração.\n")
         yaml.safe_dump(tema, fh, sort_keys=False, allow_unicode=True)
     with open(destino / "painel_tema.json", "w", encoding="utf-8") as fh:
         json.dump(cfg, fh, ensure_ascii=False, indent=2)

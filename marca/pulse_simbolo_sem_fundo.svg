@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>PULSE</title>
+  <defs>
+    <linearGradient id="gFundo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#162234"/><stop offset="1" stop-color="#0B111A"/>
+    </linearGradient>
+    <filter id="bri" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="7.00" result="b"/>
+      <feComponentTransfer in="b" result="b2"><feFuncA type="linear" slope="0.8"/></feComponentTransfer>
+      <feMerge><feMergeNode in="b2"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <path d="M30.00 138.00 L70.00 138.00 L82.00 124.00 L94.00 138.00 L104.00 138.00 L112.00 150.00 L130.00 50.00 L152.00 204.00 L168.00 118.00 L180.00 138.00 L226.00 138.00" fill="none" stroke="#00E5FF" stroke-width="15.00" stroke-linecap="round" stroke-linejoin="round" filter="url(#bri)"/>
+</svg>

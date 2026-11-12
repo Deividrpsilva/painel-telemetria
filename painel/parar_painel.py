@@ -1,4 +1,4 @@
-# Encerra o painel (main.py rodando na pasta app), inclusive o processo filho do venv.
+# PULSE — System Telemetry - encerra o painel (main.py rodando na pasta app), inclusive o processo filho do venv.
 # Rodado direto, também encerra o iniciador (painel/iniciar.py), que reabriria o main.py.
 import os
 import time

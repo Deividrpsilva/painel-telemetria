@@ -1,6 +1,8 @@
-; Painel de Telemetria - instalador (NSIS)
-; Gera PainelTelemetria-Setup.exe: copia o programa, roda o instalar.ps1 (Python, dependências,
-; temas, tarefa que inicia com o Windows, atalhos) e registra em "Adicionar ou remover programas".
+; PULSE — System Telemetry - instalador (NSIS)
+; Gera PULSE-Setup.exe: copia o programa, roda o instalar.ps1 (Python, dependências, temas, tarefa que
+; inicia com o Windows, atalhos) e registra em "Adicionar ou remover programas".
+; A pasta (C:\PainelTelemetria), a tarefa e a chave do registro mantêm os nomes da versão 6, para que a
+; atualização preserve temas e configurações e não crie uma segunda instalação.
 Unicode true
 SetCompressor /SOLID lzma
 ManifestDPIAware true
@@ -9,41 +11,49 @@ ManifestDPIAware true
 !include "x64.nsh"
 !include "LogicLib.nsh"
 
-!define NOME "Painel de Telemetria"
-!define VERSAO "6.1"
+!define NOME "PULSE — System Telemetry"
+!define VERSAO "7.0"
+!define AUTOR "Deivid Robinson"
+!define SITE "https://github.com/Deividrpsilva/painel-telemetria"
 !define CHAVE "Software\Microsoft\Windows\CurrentVersion\Uninstall\PainelTelemetria"
 !define PS '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass'
 
 Name "${NOME}"
-OutFile "PainelTelemetria-Setup.exe"
+OutFile "PULSE-Setup.exe"
 InstallDir "C:\PainelTelemetria"
 RequestExecutionLevel admin
 BrandingText "${NOME} ${VERSAO}"
 ShowInstDetails show
 ShowUninstDetails show
 
-VIProductVersion "6.1.0.0"
+VIProductVersion "7.0.0.0"
 VIAddVersionKey /LANG=1046 "ProductName" "${NOME}"
 VIAddVersionKey /LANG=1046 "FileDescription" "Instalador do ${NOME}"
 VIAddVersionKey /LANG=1046 "FileVersion" "${VERSAO}"
 VIAddVersionKey /LANG=1046 "ProductVersion" "${VERSAO}"
-VIAddVersionKey /LANG=1046 "LegalCopyright" "turing-smart-screen-python (GPL-3.0) + Painel de Telemetria"
+VIAddVersionKey /LANG=1046 "CompanyName" "${AUTOR}"
+VIAddVersionKey /LANG=1046 "LegalCopyright" "${AUTOR} - GPL-3.0 (inclui turing-smart-screen-python)"
 
-!define MUI_ICON "pacote\app\painel\painel.ico"
-!define MUI_UNICON "pacote\app\painel\painel.ico"
+!define MUI_ICON "pacote\app\painel\pulse.ico"
+!define MUI_UNICON "pacote\app\painel\pulse.ico"
+!define MUI_WELCOMEFINISHPAGE_BITMAP "pulse_instalador_lateral.bmp"
+!define MUI_HEADERIMAGE
+!define MUI_HEADERIMAGE_RIGHT
+!define MUI_HEADERIMAGE_BITMAP "pulse_instalador_cabecalho.bmp"
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "Instalar o ${NOME}"
-!define MUI_WELCOMEPAGE_TEXT "Este programa controla a tela USB de 3,5$\" (Turing Smart Screen) no lugar do TURMO.$\r$\n$\r$\n\
+!define MUI_WELCOMEPAGE_TEXT "Monitoramento e telemetria de hardware em tempo real na tela USB de 3,5$\" (Turing Smart Screen), no lugar do TURMO.$\r$\n$\r$\n\
 - A tela começa a mostrar a telemetria assim que você entra no Windows.$\r$\n\
-- Um ícone fica na bandeja, perto do relógio (em $\"mostrar ícones ocultos$\"), para abrir a configuração, trocar o perfil Trabalho/Jogos e o brilho.$\r$\n$\r$\n\
+- O ícone do PULSE fica na bandeja, perto do relógio (em $\"mostrar ícones ocultos$\"), para abrir a configuração, trocar o perfil Trabalho/Jogos e o brilho.$\r$\n\
+- Se já houver uma versão instalada, ela é atualizada e seus temas e configurações são mantidos.$\r$\n$\r$\n\
 A instalação precisa de internet para baixar os componentes do Python (cerca de 60 MB) e leva alguns minutos.$\r$\n$\r$\n\
 Se o TURMO estiver aberto, ele será fechado."
 !define MUI_FINISHPAGE_TITLE "${NOME} instalado"
 !define MUI_FINISHPAGE_TEXT "A tela já está sendo atualizada.$\r$\n$\r$\n\
-Para configurar depois: clique no ícone do painel perto do relógio (setinha ^ da bandeja) ou no atalho $\"Painel de Telemetria$\" da Área de Trabalho.$\r$\n$\r$\n\
+Para configurar depois: clique no ícone do PULSE perto do relógio (setinha ^ da bandeja) ou no atalho $\"PULSE$\" da Área de Trabalho.$\r$\n$\r$\n\
 Desmarque $\"Startup$\" no TURMO para ele não abrir mais com o Windows."
 !define MUI_FINISHPAGE_RUN
-!define MUI_FINISHPAGE_RUN_TEXT "Abrir a configuração do painel agora"
+!define MUI_FINISHPAGE_RUN_TEXT "Abrir o PULSE agora"
 !define MUI_FINISHPAGE_RUN_FUNCTION AbrirPainel
 
 !insertmacro MUI_PAGE_WELCOME
@@ -88,8 +98,10 @@ Section "Instalar"
   WriteUninstaller "$INSTDIR\Desinstalar.exe"
   WriteRegStr HKLM "${CHAVE}" "DisplayName" "${NOME}"
   WriteRegStr HKLM "${CHAVE}" "DisplayVersion" "${VERSAO}"
-  WriteRegStr HKLM "${CHAVE}" "Publisher" "Painel de Telemetria"
-  WriteRegStr HKLM "${CHAVE}" "DisplayIcon" "$INSTDIR\app\painel\painel.ico"
+  WriteRegStr HKLM "${CHAVE}" "Publisher" "${AUTOR}"
+  WriteRegStr HKLM "${CHAVE}" "DisplayIcon" "$INSTDIR\app\painel\pulse.ico"
+  WriteRegStr HKLM "${CHAVE}" "URLInfoAbout" "${SITE}"
+  WriteRegStr HKLM "${CHAVE}" "HelpLink" "${SITE}"
   WriteRegStr HKLM "${CHAVE}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKLM "${CHAVE}" "UninstallString" '"$INSTDIR\Desinstalar.exe"'
   WriteRegDWORD HKLM "${CHAVE}" "NoModify" 1

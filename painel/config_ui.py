@@ -1,30 +1,47 @@
-# Painel de Telemetria - interface de configuração
+# PULSE — System Telemetry - interface de configuração
 #
-# Janela própria "Painel de Telemetria" (pywebview + WebView2 do Windows, sem navegador) para escolher o
-# tema da tela, criar e editar temas próprios (blocos, ordem, cores, fontes, estilo), perfis, brilho e
+# Janela própria "PULSE — System Telemetry" (pywebview + WebView2 do Windows, sem navegador) para escolher
+# o tema da tela, criar e editar temas próprios (blocos, ordem, cores, fontes, estilo), perfis, brilho e
 # aplicar na tela. A página é servida em http://127.0.0.1:5680.
+# Com --janela, a splash (painel/splash.py) aparece antes de tudo e acompanha o carregamento real:
+# componentes -> temas -> interface -> página pronta. A janela é criada escondida e só aparece quando a
+# página termina de carregar (/api/pronto), junto com o fade da splash.
 # Rode a partir da pasta app:
 #   pythonw painel/config_ui.py --janela    abre a janela (é o que o ícone da bandeja faz)
 #   python  painel/config_ui.py             abre no navegador (modo antigo)
+import socket
+import sys
+from pathlib import Path
+
+_SPLASH = None                 # avisos de "ainda carregando" para a splash, enquanto ela estiver aberta
+if __name__ == "__main__" and "--janela" in sys.argv:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import splash  # noqa: E402  (leve: só socket/subprocess)
+    try:
+        socket.create_connection(("127.0.0.1", 5680), timeout=0.3).close()   # janela já aberta: sem splash
+    except OSError:
+        splash.abrir_splash()
+        _SPLASH = splash.Batimento()
+        splash.avisar("p 15 Carregando componentes...")
+
 import base64
 import json
 import os
 import platform
 import shutil
 import subprocess
-import sys
 import tempfile
 import threading
 import time
 import webbrowser
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from io import BytesIO
-from pathlib import Path
 from urllib.parse import unquote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gerador  # noqa: E402
 import iniciar  # noqa: E402  (perfis e caminhos do iniciador)
+import tela_usb  # noqa: E402  (estado da conexão com a tela USB: tela.json)
 from parar_painel import parar_main  # noqa: E402
 
 APP_DIR = gerador.APP_DIR
@@ -35,6 +52,37 @@ THEMES_DIR = gerador.THEMES_DIR
 NOME_TAREFA = "PainelTelemetria"
 PORTA = 5680
 HTML = Path(__file__).resolve().parent / "ui.html"
+
+
+def _versao():
+    """Versão instalada: painel/versao.txt (gravado ao montar o pacote) ou o setup.nsi do repositório."""
+    aqui = Path(__file__).resolve().parent
+    try:
+        return (aqui / "versao.txt").read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
+    try:
+        import re
+        m = re.search(r'!define VERSAO "([^"]+)"', (aqui.parent / "instalador" / "setup.nsi").read_text(encoding="utf-8"))
+        return m.group(1) + " (desenvolvimento)"
+    except (OSError, AttributeError):
+        return "desenvolvimento"
+
+
+VERSAO = _versao()
+
+
+def _progresso(pct, texto):
+    if _SPLASH is not None:
+        splash.avisar(f"p {pct} {texto}")
+
+
+def _splash_fim(erro=None):
+    global _SPLASH
+    if _SPLASH is not None:
+        _SPLASH.parar()
+        _SPLASH = None
+        splash.avisar(f"erro {erro}" if erro else "fim")
 
 os.chdir(APP_DIR)
 _lock = threading.Lock()
@@ -128,6 +176,17 @@ def painel_rodando():
     return iniciar.enviar_comando("ping")
 
 
+def estado_tela():
+    """Estado da tela USB gravado pelo programa da tela e pelo iniciador (painel/tela_usb.py)."""
+    d = tela_usb.ler_estado()
+    d["iniciador"] = painel_rodando()
+    if d.get("estado") and not d["iniciador"]:
+        d.update(estado="parado", mensagem="O programa da tela não está rodando",
+                 detalhe="Clique em “Aplicar na tela” para iniciá-lo (ou reinicie o computador).")
+    d["resumo"] = tela_usb.resumo(d)
+    return d
+
+
 def reiniciar_painel():
     """O iniciador (painel/iniciar.py, ícone da bandeja) mantém o main.py aberto; basta pedir para ele reabrir."""
     if iniciar.enviar_comando("reiniciar"):
@@ -196,8 +255,13 @@ class Handler(BaseHTTPRequestHandler):
             if caminho == "/api/focar":
                 focar()
                 return self._json({"ok": True})
+            if caminho == "/api/pronto":      # a página terminou de carregar: mostra a janela e fecha a splash
+                mostrar_janela()
+                return self._json({"ok": True})
             if caminho in ("/", "/index.html"):
                 return self._send(200, HTML.read_bytes(), "text/html; charset=utf-8")
+            if caminho == "/api/tela":
+                return self._json(estado_tela())
             if caminho == "/api/estado":
                 cfg = ler_config()
                 return self._json({
@@ -212,6 +276,8 @@ class Handler(BaseHTTPRequestHandler):
                     "perfis": iniciar.ler_perfis(),
                     "padrao": gerador.completar(None),
                     "admin": _eh_admin() or painel_rodando(),
+                    "versao": VERSAO,
+                    "tela": estado_tela(),
                 })
             if caminho.startswith("/api/tema/"):
                 pasta = caminho[len("/api/tema/"):]
@@ -317,8 +383,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 # ---------------------------------------------------------------- janela própria
-ICONE_ICO = Path(__file__).resolve().parent / "painel.ico"
-TITULO = "Painel de Telemetria"
+ICONE_ICO = Path(__file__).resolve().parent / "pulse.ico"
+TITULO = "PULSE — System Telemetry"
+_MOSTRADA = threading.Event()
 
 
 def _hwnd():
@@ -349,6 +416,26 @@ def _icone_e_frente(primeira=False):
         pass
 
 
+def mostrar_janela():
+    """Mostra a janela (criada escondida) e fecha a splash. Pode ser chamada mais de uma vez."""
+    if _MOSTRADA.is_set():
+        return
+    _MOSTRADA.set()
+    if JANELA is not None:
+        try:
+            JANELA.show()
+        except Exception as e:
+            print("Falha ao mostrar a janela:", e)
+        threading.Timer(0.2, _icone_e_frente, kwargs={"primeira": True}).start()
+    _splash_fim()
+
+
+def _depois(segundos, f):
+    tm = threading.Timer(segundos, f)
+    tm.daemon = True              # não segura o programa depois que a janela fecha
+    tm.start()
+
+
 def focar():
     if JANELA is not None:
         try:
@@ -372,16 +459,24 @@ def abrir_janela(url, srv):
     except Exception as e:
         print("Janela própria indisponível:", e)
         return False
+    _progresso(70, "Preparando a janela...")
     if platform.system() == "Windows":
         try:  # agrupa na barra de tarefas como um programa próprio (e não como "Python")
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("PainelTelemetria.Configuracao")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("PULSE.SystemTelemetry")
         except Exception:
             pass
+
+    def carregada():
+        _progresso(90, "Quase pronto...")
+        _depois(4.0, mostrar_janela)   # se a página não avisar (/api/pronto), mostra assim mesmo
+
     try:
+        # escondida até a página carregar: a splash cobre a espera e não aparece janela em branco
         JANELA = webview.create_window(TITULO, url, width=1320, height=900, min_size=(980, 640),
-                                       background_color="#0b0e17")
-        JANELA.events.shown += lambda: threading.Timer(0.3, _icone_e_frente, kwargs={"primeira": True}).start()
+                                       background_color="#000000", hidden=True)
+        JANELA.events.loaded += carregada
+        _depois(15.0, mostrar_janela)  # segurança: nunca fica escondida para sempre
         webview.start()
         return True
     except Exception as e:
@@ -396,12 +491,14 @@ def main():
         srv = ThreadingHTTPServer(("127.0.0.1", PORTA), Handler)
     except OSError:
         # já está aberta: traz a janela existente para a frente
+        _splash_fim()
         try:
             import urllib.request
             urllib.request.urlopen(url + "api/focar", timeout=3).read()
         except Exception:
             webbrowser.open(url)
         return
+    _progresso(35, "Carregando temas...")
     with _lock:
         gerador.migrar_antigo()
         gerador.criar_modelos_iniciais()
@@ -409,17 +506,19 @@ def main():
             if not (THEMES_DIR / p / "theme.yaml").is_file():
                 gerador.gerar(gerador.carregar_tema_usuario(p), THEMES_DIR / p)
     if "--janela" in sys.argv:
+        _progresso(55, "Abrindo a interface...")
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         if abrir_janela(url, srv):
             srv.shutdown()        # janela fechada: o painel continua na bandeja
             return
         # sem janela própria: usa o navegador e fecha sozinho quando a página for fechada
+        _splash_fim()
         webbrowser.open(url)
         while time.monotonic() - ULTIMO_CONTATO < 120:
             time.sleep(5)
         srv.shutdown()
         return
-    print("Configuração do Painel de Telemetria aberta em", url)
+    print("Configuração do PULSE aberta em", url)
     print("Deixe esta janela aberta enquanto configura. Feche-a para sair.")
     threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
@@ -429,4 +528,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        _splash_fim(erro="Não foi possível abrir a configuração.")
+        raise
+    finally:
+        _splash_fim()             # a splash nunca fica esperando
+
