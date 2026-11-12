@@ -47,19 +47,82 @@ if (-not $admin) {
 # se recusa a carregar a DLL do LibreHardwareMonitor. Remove o bloqueio do pacote.
 Get-ChildItem -Path $PSScriptRoot -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue
 
+function Processos-DoPainel {
+    # Processos do PULSE: python com main.py/iniciar.py/... na linha de comando, programa dentro da pasta
+    # do PULSE ou com alguma DLL dela carregada (o main.py prende as DLLs do LibreHardwareMonitor).
+    $achados = @{}
+    Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' OR Name='python.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine -match '(main|iniciar|config_ui|splash|abrir)\.py' -and
+                       ($_.CommandLine -like "*$App*" -or $_.CommandLine -match 'Python3\d+\\pythonw?\.exe') } |
+        ForEach-Object { $achados[[int]$_.ProcessId] = "$($_.Name) (PID $($_.ProcessId))" }
+    foreach ($p in Get-Process -ErrorAction SilentlyContinue) {
+        if ($p.Id -eq $PID) { continue }
+        try {
+            if ($p.Path -and $p.Path -like "$Destino\*") { $achados[$p.Id] = "$($p.ProcessName) (PID $($p.Id))"; continue }
+            foreach ($m in $p.Modules) {
+                if ($m.FileName -like "$Destino\*") {
+                    $achados[$p.Id] = "$($p.ProcessName) (PID $($p.Id), usando $(Split-Path -Leaf $m.FileName))"
+                    break
+                }
+            }
+        } catch { }
+    }
+    $achados.Remove($PID)
+    return $achados
+}
+
 function Parar-Painel {
     Stop-ScheduledTask -TaskName $NomeTarefa -ErrorAction SilentlyContinue
+    # a tarefa fica desligada até o fim (Iniciar-Painel religa): não reabre o painel no meio da instalação
+    Disable-ScheduledTask -TaskName $NomeTarefa -ErrorAction SilentlyContinue | Out-Null
     # o python do venv cria um processo filho (python da instalação base): encerra pelos dois caminhos
     if ((Test-Path $PyVenv) -and (Test-Path (Join-Path $App "painel\parar_painel.py"))) {
         $eap = $ErrorActionPreference; $ErrorActionPreference = "Continue"
         & $PyVenv (Join-Path $App "painel\parar_painel.py") 2>&1 | Out-Null
         $ErrorActionPreference = $eap
     }
-    Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' OR Name='python.exe'" |
-        Where-Object { $_.CommandLine -and $_.CommandLine -match '(main|iniciar|config_ui|splash|abrir)\.py' -and
-                       ($_.CommandLine -like "*$App*" -or $_.CommandLine -match 'Python3\d+\\pythonw?\.exe') } |
-        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-    Start-Sleep -Seconds 1
+    # espera os processos fecharem de verdade (um processo preso numa escrita USB pode demorar a sair)
+    for ($i = 0; $i -lt 10; $i++) {
+        $procs = Processos-DoPainel
+        if ($procs.Count -eq 0) { break }
+        foreach ($id in @($procs.Keys)) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 1
+    }
+    if ($procs.Count) { Aviso ("Ainda abertos: " + (($procs.Values | Sort-Object) -join ", ")) }
+}
+
+function Limpar-App {
+    # Apaga o programa antigo (menos o .venv). Se um arquivo continuar preso (processo que não fecha,
+    # antivírus), tenta de novo e, em último caso, move para _antigo (o Windows deixa mover uma DLL em
+    # uso); essa pasta é apagada na próxima instalação.
+    for ($t = 1; $t -le 5; $t++) {
+        $erros = $null
+        Get-ChildItem $App -Force | Where-Object { $_.Name -ne ".venv" } |
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue -ErrorVariable erros
+        if (-not $erros) { return }
+        if ($t -eq 1) { Aviso "Arquivos em uso no programa antigo; tentando de novo..." }
+        Parar-Painel
+        Start-Sleep -Seconds 2
+    }
+    $lixo = Join-Path $Destino ("_antigo\" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+    try {
+        $restantes = Get-ChildItem $App -Recurse -Force -File | Where-Object { $_.FullName -notlike "$Venv\*" }
+        foreach ($f in $restantes) {
+            $alvo = Join-Path $lixo $f.FullName.Substring($App.Length + 1)
+            New-Item -ItemType Directory -Force -Path (Split-Path $alvo) | Out-Null
+            Move-Item -Force -LiteralPath $f.FullName -Destination $alvo
+        }
+        Get-ChildItem $App -Force | Where-Object { $_.Name -ne ".venv" } | Remove-Item -Recurse -Force
+        $procs = Processos-DoPainel
+        Aviso ("Arquivos em uso foram movidos para $lixo" + $(if ($procs.Count) { " (presos por: " + (($procs.Values | Sort-Object) -join ", ") + ")" } else { "" }))
+        Aviso "Se a tela não ligar, reinicie o computador."
+    } catch {
+        $procs = Processos-DoPainel
+        Write-Host "Não foi possível substituir o programa antigo: $($_.Exception.Message)" -ForegroundColor Red
+        if ($procs.Count) { Write-Host ("Programas usando a pasta do PULSE: " + (($procs.Values | Sort-Object) -join ", ")) -ForegroundColor Red }
+        Write-Host "Reinicie o computador e rode o instalador de novo." -ForegroundColor Red
+        exit 1
+    }
 }
 
 function Copiar-TemaESensores {
@@ -82,6 +145,7 @@ function Gerar-Tema {
 
 function Iniciar-Painel {
     if (Get-ScheduledTask -TaskName $NomeTarefa -ErrorAction SilentlyContinue) {
+        Enable-ScheduledTask -TaskName $NomeTarefa -ErrorAction SilentlyContinue | Out-Null
         Start-ScheduledTask -TaskName $NomeTarefa
     } else {
         Start-Process -FilePath $PywVenv -ArgumentList "painel\iniciar.py" -WorkingDirectory $App
@@ -154,7 +218,8 @@ $src = Get-Item (Join-Path $Pacote "app")
 $cfgAntigo = $null
 if (Test-Path (Join-Path $App "config.yaml")) { $cfgAntigo = Get-Content -Raw (Join-Path $App "config.yaml") }
 New-Item -ItemType Directory -Force -Path $App | Out-Null
-Get-ChildItem $App -Force | Where-Object { $_.Name -ne ".venv" } | Remove-Item -Recurse -Force
+Remove-Item -Recurse -Force (Join-Path $Destino "_antigo") -ErrorAction SilentlyContinue   # sobras de uma atualização anterior
+Limpar-App
 Copy-Item -Recurse -Force (Join-Path $src.FullName "*") $App
 Copiar-TemaESensores
 Get-ChildItem -Path $Destino -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue

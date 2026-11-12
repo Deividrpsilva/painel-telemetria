@@ -12,10 +12,24 @@ if ((Test-Path $py) -and (Test-Path $parar)) {
     & $py $parar 2>&1 | Out-Null
     $ErrorActionPreference = $eap
 }
-Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' OR Name='python.exe'" |
-    Where-Object { $_.CommandLine -and $_.CommandLine -match '(main|iniciar|config_ui|splash|abrir)\.py' -and ($_.CommandLine -like "*$App*" -or $_.CommandLine -like "*painel\*.py*") } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-Start-Sleep -Seconds 1
+# encerra e espera fechar: python do PULSE pela linha de comando e qualquer processo rodando da pasta
+# ou com uma DLL dela carregada (o main.py prende as DLLs do LibreHardwareMonitor)
+for ($i = 0; $i -lt 10; $i++) {
+    $ids = @()
+    $ids += Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' OR Name='python.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine -match '(main|iniciar|config_ui|splash|abrir)\.py' -and ($_.CommandLine -like "*$App*" -or $_.CommandLine -like "*painel\*.py*" -or $_.CommandLine -match 'Python3\d+\\pythonw?\.exe') } |
+        ForEach-Object { [int]$_.ProcessId }
+    foreach ($p in Get-Process -ErrorAction SilentlyContinue) {
+        if ($p.Id -eq $PID) { continue }
+        try {
+            if (($p.Path -and $p.Path -like "$Destino\*") -or ($p.Modules | Where-Object { $_.FileName -like "$Destino\*" })) { $ids += $p.Id }
+        } catch { }
+    }
+    $ids = @($ids | Where-Object { $_ -ne $PID } | Sort-Object -Unique)
+    if ($ids.Count -eq 0) { break }
+    foreach ($id in $ids) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 1
+}
 
 if ($ManterTemas) {
     $manter = @("temas", "fundos", "perfis.json")
