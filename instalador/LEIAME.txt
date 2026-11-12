@@ -1,0 +1,70 @@
+﻿PAINEL DE TELEMETRIA 6.0 - tela Turing Smart Screen 3,5" (USB 1A86:5722)
+========================================================================
+
+Substitui o TURMO usando o turing-smart-screen-python 3.10.0 (open source, GPL-3,
+incluído na pasta app) com temas próprios, uma janela de configuração em português e
+um ícone na bandeja do Windows.
+
+INSTALAR (ou atualizar uma instalação anterior)
+  1. Dê dois cliques em "PainelTelemetria-Setup.exe" e aceite o pedido de administrador.
+     Se o Windows mostrar "O Windows protegeu o computador", clique em "Mais informações"
+     e depois em "Executar assim mesmo" (o instalador não tem assinatura digital paga).
+  2. O instalador:
+     - fecha o TURMO (desmarque "Startup" nele para não voltar a abrir);
+     - usa o Python 3.10 a 3.13 já instalado, ou baixa o 3.12;
+     - baixa os componentes do Python (precisa de internet, cerca de 60 MB);
+     - cria a tarefa "PainelTelemetria", que liga a tela assim que você entra no Windows;
+     - cria o atalho "Painel de Telemetria" na Área de Trabalho e no Menu Iniciar.
+  3. Tudo fica em C:\PainelTelemetria. Seus temas ficam em C:\PainelTelemetria\temas e
+     são mantidos ao reinstalar (copie essa pasta para levar seus temas a outro PC).
+
+  Sem o Setup? Também dá para instalar pelo "Instalar.bat" desta pasta.
+
+ÍCONE NA BANDEJA (perto do relógio, na setinha ^ de "mostrar ícones ocultos")
+  Clique no ícone para abrir a configuração. Com o botão direito:
+    - Perfil Trabalho / Perfil Jogos: troca o tema da tela na hora;
+    - Trocar sozinho ao jogar: liga/desliga a troca automática por tela cheia;
+    - Brilho da tela: 5% a 100%;
+    - Reiniciar a tela;
+    - Sair: a tela para de atualizar até você abrir o atalho ou reiniciar o PC.
+  Para deixar o ícone sempre visível, arraste-o da setinha ^ para a barra de tarefas.
+
+CONFIGURAR (janela "Painel de Telemetria")
+  Abra pelo ícone da bandeja ou pelo atalho da Área de Trabalho. Nela você:
+    - escolhe o tema da tela (seus temas ou um dos temas prontos de 3,5");
+    - cria, duplica, renomeia e exclui temas seus (+ Novo tema), começando de um
+      modelo: Padrão, Trabalho / Produtividade, Jogos ou Código (programação);
+    - liga/desliga e reordena as informações, escolhe cores, paletas prontas, fonte,
+      cartões, medidor ou barra, VRAM, clock, watts, média de FPS da sessão e fundo;
+    - escolhe a aparência "Cartões" ou "Código" (parece um editor de programação);
+    - ajusta as cores da temperatura (padrão: verde abaixo de 70 °C, amarelo até
+      85 °C, vermelho acima);
+    - ajusta o brilho e gira a imagem 180°;
+    - clica em "Aplicar na tela".
+  Fechar a janela não desliga a tela: o painel continua rodando na bandeja.
+
+PERFIS TRABALHO x JOGOS
+  Na seção "Perfis" escolha um tema para Trabalho e outro para Jogos. Com "Trocar
+  sozinho" ligado, quando um programa fica em tela cheia por 5 s a tela passa para o
+  tema de Jogos, e 20 s depois de sair volta para o de Trabalho.
+
+O QUE O "MEU PAINEL" MOSTRA
+  Relógio e data | Nome e modelo da CPU, GPU e RAM | CPU e GPU: uso + temperatura colorida
+  RAM: %, usada e livre | Consumo de energia: CPU, GPU e total em W
+  FPS + frametime + gráfico (durante jogos) | Rede: download/upload + gráfico
+  SSD: temperatura, atividade, uso e espaço livre do C:
+  Áudio dividido: volume do alto-falante e do microfone (MUDO quando silenciado)
+
+PROBLEMAS
+  - C:\PainelTelemetria\"Rodar com log (diagnostico).bat" mostra os erros da tela.
+  - C:\PainelTelemetria\iniciar.log registra trocas de perfil e reinícios.
+  - FPS vem do driver AMD via LibreHardwareMonitor: mostra "--" fora de jogos
+    e em placas que não fornecem esse sensor.
+  - Watts: vêm do LibreHardwareMonitor (CPU "Package" e GPU "Total/Board"). Mostra "--" se
+    o sensor não existir no seu hardware.
+  - A janela de configuração usa o WebView2 do Windows (o mesmo motor do Edge). Se ele
+    faltar, a configuração abre no navegador padrão.
+
+DESINSTALAR
+  Configurações do Windows > Aplicativos > "Painel de Telemetria" > Desinstalar
+  (pergunta se você quer manter seus temas).

@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de Telemetria</title>
+<style>
+  :root {
+    --bg: #0b0e17; --painel: #131826; --painel2: #1a2032; --borda: #262e45;
+    --texto: #e3e8f4; --fraco: #8590ab; --acento: #3dd6f5; --ok: #50e696; --erro: #ff6b7d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--texto);
+         font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  header { padding: 18px 28px; border-bottom: 1px solid var(--borda); display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--fraco); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 24px; padding: 24px 28px 110px; max-width: 1280px; margin: 0 auto; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } .lado { position: static !important; } }
+  section { background: var(--painel); border: 1px solid var(--borda); border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; }
+  h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--fraco); margin: 0 0 14px; font-weight: 600; }
+  .temas { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; max-height: 340px; overflow: auto; padding: 2px; }
+  .tema { background: var(--painel2); border: 2px solid transparent; border-radius: 10px; padding: 6px; cursor: pointer; text-align: center; position: relative; }
+  .tema:hover { border-color: var(--borda); }
+  .tema.sel { border-color: var(--acento); }
+  .tema .mini { height: 120px; display: flex; align-items: center; justify-content: center; }
+  .tema img { max-width: 100%; max-height: 120px; border-radius: 4px; }
+  .tema .nome { font-size: 11px; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tema .tag { font-size: 10px; color: var(--fraco); }
+  .tema .tag.meu { color: var(--acento); }
+  .tema .natela { position: absolute; top: 4px; right: 4px; background: var(--ok); color: #04140b; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 6px; }
+  .tema.novo .mini { font-size: 42px; color: var(--acento); }
+  .cab-editor { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .cab-editor input[type=text] { flex: 1; min-width: 160px; background: var(--painel2); border: 1px solid var(--borda); color: var(--texto); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 15px; }
+  .paletas { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 1px solid var(--borda); background: var(--painel2); color: var(--texto); border-radius: 999px;
+          padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; font: inherit; }
+  .chip.sel { border-color: var(--acento); }
+  .chip .bolas span { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-left: -3px; border: 1px solid #0004; }
+  .bloco { display: grid; grid-template-columns: 22px 1fr auto auto; align-items: center; gap: 10px;
+           background: var(--painel2); border: 1px solid var(--borda); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
+  .bloco.off .nomeb { color: var(--fraco); text-decoration: line-through; }
+  .bloco.off .sub-opcoes { display: none; }
+  .bloco .cores { display: flex; gap: 6px; align-items: center; }
+  .bloco .cores label, .sub-opcoes label { font-size: 12px; color: var(--fraco); display: flex; align-items: center; gap: 5px; }
+  .setas button { background: none; border: 1px solid var(--borda); color: var(--texto); border-radius: 6px; width: 28px; height: 26px; cursor: pointer; }
+  .setas button:disabled { opacity: .3; cursor: default; }
+  .sub-opcoes { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 8px 16px; }
+  select, input[type=number] { background: var(--painel); color: var(--texto); border: 1px solid var(--borda); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 12px; }
+  input[type=color] { width: 30px; height: 24px; border: 1px solid var(--borda); border-radius: 6px; background: none; padding: 0; cursor: pointer; }
+  input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--acento); }
+  .grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+  .grade label { white-space: nowrap; }
+  .grade label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fraco); }
+  .linha { display: flex; align-items: center; gap: 12px; margin: 8px 0; flex-wrap: wrap; }
+  input[type=range] { flex: 1; accent-color: var(--acento); }
+  .btn { background: var(--painel2); border: 1px solid var(--borda); color: var(--texto); border-radius: 8px; padding: 7px 14px; cursor: pointer; font: inherit; }
+  .btn.perigo { color: var(--erro); }
+  .btn.prim { background: var(--acento); color: #04121a; border-color: var(--acento); font-weight: 600; padding: 10px 22px; }
+  .btn:disabled { opacity: .5; cursor: wait; }
+  .lado { position: sticky; top: 16px; align-self: start; }
+  .tela { background: #000; border-radius: 18px; padding: 14px; border: 1px solid var(--borda); display: flex; justify-content: center; }
+  .tela img { width: 320px; height: 480px; object-fit: contain; display: block; }
+  .nota { color: var(--fraco); font-size: 12px; margin-top: 10px; }
+  footer { position: fixed; left: 0; right: 0; bottom: 0; background: #0b0e17ee; border-top: 1px solid var(--borda);
+           padding: 14px 28px; display: flex; align-items: center; gap: 12px; backdrop-filter: blur(6px); }
+  #status { color: var(--fraco); }
+  #status.ok { color: var(--ok); } #status.erro { color: var(--erro); }
+  .aviso { background: #3a2a10; border: 1px solid #6b4e1a; color: #ffd28a; padding: 10px 14px; border-radius: 10px; margin-bottom: 16px; display: none; }
+  .escondido { display: none !important; }
+  .form-novo { background: var(--painel2); border: 1px solid var(--acento); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+  .form-novo input[type=text] { background: var(--painel); border: 1px solid var(--borda); color: var(--texto); border-radius: 8px; padding: 6px 10px; font: inherit; min-width: 200px; }
+  .form-novo select { font-size: 13px; padding: 5px 8px; }
+  .perfis { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 700px) { .perfis { grid-template-columns: 1fr; } }
+  .perfil { background: var(--painel2); border: 1px solid var(--borda); border-radius: 10px; padding: 12px 14px; }
+  .perfil h3 { margin: 0 0 4px; font-size: 14px; }
+  .perfil select { width: 100%; font-size: 13px; padding: 5px 8px; margin: 8px 0; }
+  .perfil.ativo { border-color: var(--ok); }
+  .avisoPrevia { color: #ffd28a; }
+</style>
+</head>
+<body>
+<header><h1>Painel de Telemetria</h1><span class="sub">Tela 3,5"</span></header>
+<main>
+  <div>
+    <div class="aviso" id="avisoAdmin">O painel da tela não está rodando. Clique em “Aplicar na tela” para iniciá-lo (ou reinicie o computador).</div>
+
+    <section>
+      <h2>Temas</h2>
+      <div class="temas" id="temas"></div>
+      <div class="form-novo escondido" id="formNovo">
+        <div class="linha" style="margin:0">
+          <label>Nome <input type="text" id="novoNome" maxlength="40" value="Novo tema"></label>
+          <label>Começar de <select id="novoBase"></select></label>
+          <button class="btn prim" id="novoCriar" style="padding:7px 16px">Criar</button>
+          <button class="btn" id="novoCancelar">Cancelar</button>
+        </div>
+      </div>
+      <div class="nota">Os temas com “seu tema” podem ser editados. Clique em <b>+ Novo tema</b> para criar outro a partir de um modelo (Trabalho, Jogos, Código…) ou do tema selecionado.</div>
+    </section>
+
+    <section>
+      <h2>Perfis (Trabalho × Jogos)</h2>
+      <label class="linha" style="margin-top:0;flex-wrap:nowrap"><input type="checkbox" id="perfAuto" style="flex:none"> <span>Trocar sozinho: quando um jogo (ou qualquer programa) fica em <b>tela cheia</b>, a tela mostra o tema de <b>Jogos</b>; ao sair, volta para o de <b>Trabalho</b>.</span></label>
+      <div class="perfis">
+        <div class="perfil" id="perfTrabalho"><h3>💼 Trabalho / Uso geral</h3>
+          <select id="perfTemaTrabalho"></select>
+          <div class="linha" style="margin:0"><button class="btn" data-usar="trabalho">Usar agora</button>
+            <label class="nota" style="margin:0">volta após <input type="number" id="perfSair" min="1" max="600" style="width:56px"> s</label></div></div>
+        <div class="perfil" id="perfJogos"><h3>🎮 Jogos</h3>
+          <select id="perfTemaJogos"></select>
+          <div class="linha" style="margin:0"><button class="btn" data-usar="jogos">Usar agora</button>
+            <label class="nota" style="margin:0">entra após <input type="number" id="perfEntrar" min="1" max="120" style="width:56px"> s</label></div></div>
+      </div>
+      <div class="nota">Um tema escolhido à mão continua na tela até o próximo jogo abrir ou fechar. Vídeo em tela cheia também conta como “jogo”.</div>
+    </section>
+
+    <div id="editor">
+      <section>
+        <h2>Tema selecionado</h2>
+        <div class="cab-editor">
+          <input type="text" id="nomeTema" maxlength="40" title="Nome do tema">
+          <button class="btn" id="btnDuplicar">Duplicar</button>
+          <button class="btn perigo" id="btnExcluir">Excluir</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Paleta de cores</h2>
+        <div class="paletas" id="paletas"></div>
+      </section>
+
+      <section>
+        <h2>Informações (marque, reordene, escolha cor e detalhes)</h2>
+        <div id="blocos"></div>
+      </section>
+
+      <section>
+        <h2>Estilo</h2>
+        <div class="grade">
+          <label>Aparência
+            <select id="opLayout"><option value="cartoes">Cartões (gráficos)</option><option value="codigo">Código (editor de programação)</option></select></label>
+          <label>Fonte dos números <select id="opFonte"></select></label>
+          <label>Cartões
+            <select id="opCartao"><option value="cartao">Preenchidos</option><option value="contorno">Só contorno</option><option value="nenhum">Sem cartão</option></select></label>
+          <label>Cantos <input type="range" id="opCantos" min="0" max="16" step="1" style="max-width:90px"></label>
+          <label><input type="checkbox" id="opFaixa"> Faixa colorida lateral</label>
+        </div>
+      </section>
+
+      <section>
+        <h2>Temperatura com cor dinâmica (CPU, GPU e SSD)</h2>
+        <div class="linha" style="margin-top:0"><label><input type="checkbox" id="opTempDin"> Mudar a cor do número conforme a temperatura</label></div>
+        <div class="linha" id="tempFaixas">
+          <label><input type="color" id="tempCor0"> abaixo de</label> <input type="number" id="tempLim0" min="30" max="110" style="width:60px"> °C
+          <label style="margin-left:10px"><input type="color" id="tempCor1"> até</label> <input type="number" id="tempLim1" min="30" max="110" style="width:60px"> °C
+          <label style="margin-left:10px"><input type="color" id="tempCor2"> acima disso</label>
+        </div>
+        <div class="nota">O SSD usa 55 °C e 70 °C como limites, que é o normal para SSDs.</div>
+      </section>
+
+      <section>
+        <h2>Fundo</h2>
+        <div class="grade" id="coresFundo"></div>
+        <div class="linha" style="margin-top:14px">
+          <button class="btn" id="btnImg">Usar uma imagem de fundo…</button>
+          <button class="btn escondido" id="btnSemImg">Remover imagem</button>
+          <input type="file" id="arqImg" accept="image/*" class="escondido">
+          <span class="nota" style="margin:0">A imagem é recortada para 320×480. Imagens escuras deixam os números mais legíveis.</span>
+        </div>
+      </section>
+    </div>
+
+    <section>
+      <h2>Tela</h2>
+      <div class="linha"><span style="width:70px">Brilho</span><input type="range" id="brilho" min="0" max="100" step="5"><b id="brilhoVal" style="width:44px;text-align:right"></b></div>
+      <div class="linha"><label><input type="checkbox" id="inverter"> Girar a imagem 180° (tela montada de cabeça para baixo)</label></div>
+    </section>
+  </div>
+
+  <div class="lado">
+    <div class="tela"><img id="previa" alt="Prévia da tela"></div>
+    <div class="nota" id="notaPrevia"></div>
+  </div>
+</main>
+<footer>
+  <button class="btn prim" id="aplicar">Aplicar na tela</button>
+  <button class="btn" id="salvar">Salvar sem aplicar</button>
+  <span id="status"></span>
+</footer>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const NOMES_FUNDO = {topo: "Gradiente (topo)", base: "Gradiente (base)", cartao: "Cartões", borda: "Bordas", texto: "Números", rotulo: "Rótulos", trilho: "Barras vazias"};
+const CORES_BLOCO = {relogio: [["relogio", "Cor"]], hardware: [["hardware", "Cor"]], cpu_gpu: [["cpu", "CPU"], ["gpu", "GPU"]],
+                     ram: [["ram", "Cor"]], fps: [["fps", "Cor"]], energia: [["energia", "Cor"]], rede: [["rede", "Down"], ["upload", "Up"]],
+                     ssd: [["ssd", "Cor"]], volume: [["volume", "Som"], ["microfone", "Mic"]]};
+// opções extras de cada bloco: [tipo, chave, rótulo, (opções do select)]
+const OPCOES_BLOCO = {
+  relogio: [["chk", "segundos", "Segundos"], ["chk", "relogio_12h", "Formato 12h (AM/PM)"],
+            ["sel", "formato_data", "Data", [["completo", "qua., 11/11/2026"], ["curto", "11/11"], ["dia_semana", "quarta-feira"], ["nenhum", "sem data"]]]],
+  cpu_gpu: [["chk", "mostrar_cpu", "CPU"], ["chk", "mostrar_gpu", "GPU"],
+            ["sel", "estilo_uso", "Uso como", [["medidor", "medidor"], ["barra", "número + barra"]]],
+            ["sel", "cpu_extra", "Extra da CPU", [["clock", "clock"], ["potencia", "watts"], ["nenhum", "nada"]]],
+            ["sel", "gpu_extra", "Extra da GPU", [["vram", "VRAM"], ["potencia", "watts"], ["nenhum", "nada"]]]],
+  ram: [["chk", "ram_detalhes", "Mostrar usada e livre"], ["chk", "ram_modelo", "Modelo da memória"]],
+  fps: [["chk", "fps_grande", "Número grande"], ["chk", "fps_media", "Média da sessão"], ["chk", "fps_grafico", "Gráfico"], ["num", "fps_max_grafico", "Hz do monitor"]],
+  rede: [["chk", "rede_grafico", "Gráfico de download"]],
+  ssd: [["chk", "ssd_livre", "Espaço livre no C:"]],
+  volume: [["chk", "volume_mic", "Dividir com o microfone"]],
+};
+let E = null, temaSel = null, P = null;   // estado do servidor, pasta selecionada, config do tema editável
+
+function status(msg, tipo = "") { const s = $("#status"); s.textContent = msg; s.className = tipo; }
+async function api(url, corpo) {
+  const r = await fetch(url, corpo === undefined ? {} : {method: "POST", body: JSON.stringify(corpo)});
+  const j = await r.json(); if (!r.ok || j.erro) throw new Error(j.erro || r.status); return j;
+}
+function temaInfo(p = temaSel) { return E.temas.find(t => t.pasta === p); }
+
+async function carregar(selecionar) {
+  E = await api("/api/estado");
+  temaSel = selecionar || temaSel || E.tema_atual;
+  if (!temaInfo()) temaSel = E.temas[0] && E.temas[0].pasta;
+  $("#brilho").value = E.brilho; $("#brilhoVal").textContent = E.brilho + "%";
+  $("#inverter").checked = E.inverter;
+  $("#avisoAdmin").style.display = E.admin ? "none" : "block";
+  $("#opFonte").innerHTML = E.fontes.map(f => `<option>${esc(f)}</option>`).join("");
+  desenharPerfis();
+  await selecionar_tema(temaSel, false);
+}
+
+async function salvarAtual() {
+  if (P && temaInfo() && temaInfo().editavel) await api("/api/tema/salvar", {pasta: temaSel, cfg: P});
+}
+
+async function selecionar_tema(pasta, salvarAntes = true) {
+  if (salvarAntes) { try { await salvarAtual(); } catch (e) {} }
+  temaSel = pasta;
+  const t = temaInfo();
+  P = t && t.editavel ? await api("/api/tema/" + encodeURIComponent(pasta)) : null;
+  desenharTemas(); desenharEditor(); atualizarPrevia();
+}
+
+function desenharTemas() {
+  const box = $("#temas"); box.innerHTML = "";
+  const novo = document.createElement("div");
+  novo.className = "tema novo";
+  novo.innerHTML = `<div class="mini">+</div><div class="nome">Novo tema</div><div class="tag">em branco ou cópia</div>`;
+  novo.onclick = novoTema;
+  box.appendChild(novo);
+  for (const t of E.temas) {
+    const d = document.createElement("div");
+    d.className = "tema" + (t.pasta === temaSel ? " sel" : "");
+    const src = t.previa ? `/api/miniatura/${encodeURIComponent(t.pasta)}?v=${Date.now()}` : "";
+    d.innerHTML = `${t.pasta === E.tema_atual ? '<span class="natela">NA TELA</span>' : ""}
+      <div class="mini">${src ? `<img src="${src}" loading="lazy">` : "<span class='nota'>sem prévia</span>"}</div>
+      <div class="nome" title="${esc(t.nome)}">${esc(t.nome)}</div>
+      <div class="tag ${t.editavel ? "meu" : ""}">${t.editavel ? "seu tema" : t.orientacao}</div>`;
+    d.onclick = () => selecionar_tema(t.pasta);
+    box.appendChild(d);
+  }
+}
+
+function novoTema() {
+  const opts = (P ? [[ "__copia", `Cópia de “${P.nome}”`]] : []).concat(E.modelos.map(m => [m, "Modelo: " + m]));
+  $("#novoBase").innerHTML = opts.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join("");
+  $("#novoNome").value = P ? P.nome + " (cópia)" : "Novo tema";
+  $("#formNovo").classList.remove("escondido"); $("#novoNome").focus(); $("#novoNome").select();
+}
+$("#novoBase").onchange = e => {
+  const v = e.target.value;
+  $("#novoNome").value = v === "__copia" ? P.nome + " (cópia)" : v.split(" ")[0];
+};
+$("#novoCancelar").onclick = () => $("#formNovo").classList.add("escondido");
+$("#novoCriar").onclick = async () => {
+  const nome = $("#novoNome").value.trim() || "Novo tema", base = $("#novoBase").value;
+  const corpo = base === "__copia" ? {nome, base: JSON.parse(JSON.stringify(P))} : {nome, modelo: base};
+  try {
+    await salvarAtual();
+    const r = await api("/api/tema/novo", corpo);
+    $("#formNovo").classList.add("escondido");
+    await carregar(r.pasta); status(`Tema “${nome}” criado.`, "ok");
+  } catch (e) { status("Erro: " + e.message, "erro"); }
+};
+
+function desenharPerfis() {
+  const pf = E.perfis, ops = E.temas.map(t => `<option value="${esc(t.pasta)}">${esc(t.nome)}${t.editavel ? "" : " (pronto)"}</option>`).join("");
+  $("#perfTemaTrabalho").innerHTML = ops; $("#perfTemaJogos").innerHTML = ops;
+  $("#perfTemaTrabalho").value = pf.trabalho; $("#perfTemaJogos").value = pf.jogos;
+  $("#perfAuto").checked = pf.auto; $("#perfEntrar").value = pf.entrar_s; $("#perfSair").value = pf.sair_s;
+  $("#perfTrabalho").classList.toggle("ativo", E.tema_atual === pf.trabalho);
+  $("#perfJogos").classList.toggle("ativo", E.tema_atual === pf.jogos);
+}
+async function salvarPerfis(usar) {
+  const perfis = {auto: $("#perfAuto").checked, trabalho: $("#perfTemaTrabalho").value, jogos: $("#perfTemaJogos").value,
+                  entrar_s: parseInt($("#perfEntrar").value) || 5, sair_s: parseInt($("#perfSair").value) || 20};
+  try {
+    if (usar) { await salvarAtual(); status("Aplicando…"); }
+    const r = await api("/api/perfis", {perfis, usar});
+    E.perfis = r.perfis;
+    if (usar) { await carregar(r.perfis[usar]); status(`Perfil ${usar === "jogos" ? "Jogos" : "Trabalho"} na tela. ${r.mensagem || ""}`, "ok"); }
+    else { desenharPerfis(); status("Perfis salvos." + (r.mensagem ? " " + r.mensagem : ""), "ok"); }
+  } catch (e) { status("Erro: " + e.message, "erro"); }
+}
+["#perfAuto", "#perfTemaTrabalho", "#perfTemaJogos", "#perfEntrar", "#perfSair"].forEach(id => $(id).onchange = () => salvarPerfis());
+document.querySelectorAll("[data-usar]").forEach(b => b.onclick = () => salvarPerfis(b.dataset.usar));
+
+function desenharEditor() {
+  const ed = !!P;
+  $("#editor").style.display = ed ? "" : "none";
+  $("#notaPrevia").textContent = ed ? "Prévia com valores de exemplo. O brilho só aparece na tela de verdade."
+                                    : "Tema pronto da comunidade (não editável). Prévia fornecida pelo autor.";
+  if (!ed) return;
+  $("#nomeTema").value = P.nome;
+  // paletas
+  const pb = $("#paletas"); pb.innerHTML = "";
+  for (const [nome, pal] of Object.entries(E.paletas)) {
+    const b = document.createElement("button");
+    b.className = "chip" + (P.paleta === nome ? " sel" : "");
+    const bolas = [pal.fundo.cartao, pal.cores.cpu, pal.cores.gpu, pal.cores.fps].map(c => `<span style="background:${c}"></span>`).join("");
+    b.innerHTML = `<span class="bolas">${bolas}</span>${esc(nome)}`;
+    b.onclick = () => { P.paleta = nome; P.fundo = {...pal.fundo}; P.cores = {...P.cores, ...pal.cores}; mudou(); };
+    pb.appendChild(b);
+  }
+  // blocos
+  const bb = $("#blocos"); bb.innerHTML = "";
+  P.blocos.forEach((b, i) => {
+    const d = document.createElement("div");
+    d.className = "bloco" + (b.ativo ? "" : " off");
+    const cores = (CORES_BLOCO[b.id] || []).map(([k, rot]) =>
+      `<label>${rot}<input type="color" data-cor="${k}" value="${P.cores[k]}"></label>`).join("");
+    const extras = (OPCOES_BLOCO[b.id] || []).map(([tipo, k, rot, ops]) => {
+      if (tipo === "chk") return `<label><input type="checkbox" data-op="${k}" ${P.opcoes[k] ? "checked" : ""}> ${rot}</label>`;
+      if (tipo === "num") return `<label>${rot} <input type="number" data-opn="${k}" value="${P.opcoes[k]}" min="30" max="500" style="width:64px"></label>`;
+      return `<label>${rot} <select data-ops="${k}">${ops.map(([v, t]) => `<option value="${v}" ${P.opcoes[k] === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>`;
+    }).join("");
+    d.innerHTML = `<input type="checkbox" ${b.ativo ? "checked" : ""}>
+      <span class="nomeb">${esc(E.blocos_info[b.id])}</span>
+      <span class="cores">${cores}</span>
+      <span class="setas"><button title="Subir" ${i === 0 ? "disabled" : ""}>▲</button> <button title="Descer" ${i === P.blocos.length - 1 ? "disabled" : ""}>▼</button></span>
+      ${extras ? `<div class="sub-opcoes">${extras}</div>` : ""}`;
+    const chk = d.querySelector("input[type=checkbox]");
+    chk.onchange = () => { b.ativo = chk.checked; mudou(); };
+    const [up, down] = d.querySelectorAll(".setas button");
+    up.onclick = () => { [P.blocos[i - 1], P.blocos[i]] = [P.blocos[i], P.blocos[i - 1]]; mudou(); };
+    down.onclick = () => { [P.blocos[i + 1], P.blocos[i]] = [P.blocos[i], P.blocos[i + 1]]; mudou(); };
+    d.querySelectorAll("input[data-cor]").forEach(inp => inp.oninput = () => { P.cores[inp.dataset.cor] = inp.value; P.paleta = "Personalizada"; mudou(false); });
+    d.querySelectorAll("input[data-op]").forEach(inp => inp.onchange = () => { P.opcoes[inp.dataset.op] = inp.checked; mudou(); });
+    d.querySelectorAll("input[data-opn]").forEach(inp => inp.onchange = () => { P.opcoes[inp.dataset.opn] = parseInt(inp.value) || 165; mudou(); });
+    d.querySelectorAll("select[data-ops]").forEach(inp => inp.onchange = () => { P.opcoes[inp.dataset.ops] = inp.value; mudou(); });
+    bb.appendChild(d);
+  });
+  // estilo
+  $("#opFonte").value = P.opcoes.fonte_numeros;
+  $("#opCartao").value = P.opcoes.estilo_cartao;
+  $("#opCantos").value = P.opcoes.cantos;
+  $("#opFaixa").checked = P.opcoes.faixa_cor;
+  $("#opLayout").value = P.opcoes.layout;
+  // temperatura
+  $("#opTempDin").checked = P.opcoes.temp_dinamica;
+  $("#tempFaixas").style.opacity = P.opcoes.temp_dinamica ? 1 : .4;
+  [0, 1].forEach(i => $("#tempLim" + i).value = P.opcoes.temp_limites[i]);
+  [0, 1, 2].forEach(i => $("#tempCor" + i).value = P.opcoes.temp_cores[i]);
+  // fundo
+  const cf = $("#coresFundo"); cf.innerHTML = "";
+  for (const [k, rot] of Object.entries(NOMES_FUNDO)) {
+    const l = document.createElement("label");
+    l.innerHTML = `<input type="color" value="${P.fundo[k]}"> ${rot}`;
+    l.querySelector("input").oninput = e => { P.fundo[k] = e.target.value; P.paleta = "Personalizada"; mudou(false); };
+    cf.appendChild(l);
+  }
+  $("#btnSemImg").classList.toggle("escondido", !P.imagem_fundo);
+}
+
+$("#opFonte").onchange = e => { P.opcoes.fonte_numeros = e.target.value; mudou(false); };
+$("#opCartao").onchange = e => { P.opcoes.estilo_cartao = e.target.value; mudou(false); };
+$("#opCantos").oninput = e => { P.opcoes.cantos = parseInt(e.target.value); mudou(false); };
+$("#opFaixa").onchange = e => { P.opcoes.faixa_cor = e.target.checked; mudou(false); };
+$("#opLayout").onchange = e => { P.opcoes.layout = e.target.value; mudou(false); };
+$("#opTempDin").onchange = e => { P.opcoes.temp_dinamica = e.target.checked; mudou(); };
+[0, 1].forEach(i => $("#tempLim" + i).onchange = e => {
+  const v = parseInt(e.target.value) || P.opcoes.temp_limites[i]; P.opcoes.temp_limites[i] = v;
+  P.opcoes.temp_limites.sort((a, b) => a - b); mudou();
+});
+[0, 1, 2].forEach(i => $("#tempCor" + i).oninput = e => { P.opcoes.temp_cores[i] = e.target.value; mudou(false); });
+$("#nomeTema").oninput = e => { P.nome = e.target.value || "Sem nome"; const t = temaInfo(); if (t) t.nome = P.nome; };
+$("#nomeTema").onchange = () => desenharTemas();
+
+function mudou(redesenhar = true) { if (redesenhar) desenharEditor(); atualizarPrevia(); status(""); }
+
+let tPrev = null, seqPrev = 0;
+function atualizarPrevia() {
+  clearTimeout(tPrev);
+  tPrev = setTimeout(async () => {
+    const img = $("#previa");
+    if (!P) { const t = temaInfo(); img.src = t && t.previa ? `/api/miniatura/${encodeURIComponent(temaSel)}` : ""; return; }
+    const meu = ++seqPrev;
+    const r = await fetch("/api/previa", {method: "POST", body: JSON.stringify(P)});
+    if (meu !== seqPrev) return;
+    if (r.ok) {
+      img.src = URL.createObjectURL(await r.blob());
+      let om = [];
+      try { om = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(r.headers.get("X-Omitidos") || "W10="), c => c.charCodeAt(0)))); } catch (e) {}
+      $("#notaPrevia").innerHTML = om.length
+        ? `<span class="avisoPrevia">⚠ Não coube na tela: <b>${om.map(esc).join(", ")}</b>. Desmarque ou mova outra informação para baixo.</span>`
+        : "Prévia com valores de exemplo. O brilho só aparece na tela de verdade.";
+    }
+    else status("Erro ao gerar a prévia: " + ((await r.json()).erro || r.status), "erro");
+  }, 250);
+}
+
+$("#btnDuplicar").onclick = novoTema;
+$("#btnExcluir").onclick = async () => {
+  if (!confirm(`Excluir o tema “${P.nome}”? Isso não pode ser desfeito.`)) return;
+  try { const r = await api("/api/tema/excluir", {pasta: temaSel}); P = null; temaSel = null; await carregar(); status("Tema excluído. " + (r.mensagem || ""), "ok"); }
+  catch (e) { status("Erro: " + e.message, "erro"); }
+};
+$("#brilho").oninput = e => { $("#brilhoVal").textContent = e.target.value + "%"; };
+$("#btnImg").onclick = () => $("#arqImg").click();
+$("#arqImg").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const dataUrl = await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(f); });
+  try { const r = await api("/api/fundo", {imagem: dataUrl}); P.imagem_fundo = r.caminho; mudou(); }
+  catch (er) { status("Erro: " + er.message, "erro"); }
+  e.target.value = "";
+};
+$("#btnSemImg").onclick = () => { P.imagem_fundo = ""; mudou(); };
+$("#salvar").onclick = async () => {
+  try { await salvarAtual(); await carregar(temaSel); status(P ? "Tema salvo." : "Nada para salvar (tema pronto).", "ok"); }
+  catch (e) { status("Erro: " + e.message, "erro"); }
+};
+$("#aplicar").onclick = async () => {
+  const b = $("#aplicar"); b.disabled = true; status("Aplicando…");
+  try {
+    const j = await api("/api/aplicar", {tema: temaSel, cfg: P, brilho: parseInt($("#brilho").value), inverter: $("#inverter").checked});
+    E.tema_atual = temaSel; await carregar(temaSel); status(j.mensagem, "ok");
+  } catch (e) { status("Erro: " + e.message, "erro"); }
+  b.disabled = false;
+};
+carregar();
+setInterval(() => fetch("/api/ping").catch(() => {}), 20000);   // mantém o configurador aberto enquanto a página existir
+</script>
+</body>
+</html>

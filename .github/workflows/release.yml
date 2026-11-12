@@ -1,0 +1,39 @@
+# Gera o instalador. Numa tag "v*" (ex.: v6.0) publica uma Release com o Setup.exe e o .zip.
+name: Gerar instalador
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  instalador:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar o NSIS
+        run: sudo apt-get update && sudo apt-get install -y nsis
+
+      - name: Montar pacote e instalador
+        run: python scripts/montar_pacote.py
+
+      - name: Guardar os arquivos gerados
+        uses: actions/upload-artifact@v4
+        with:
+          name: PainelTelemetria
+          path: dist/*
+
+      - name: Publicar a Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

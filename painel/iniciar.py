@@ -1,0 +1,479 @@
+# Painel de Telemetria - iniciador e ícone da bandeja
+#
+# É o que a tarefa "PainelTelemetria" abre ao entrar no Windows (como administrador, exigido
+# pelo LibreHardwareMonitor). Ele:
+#   1. mantém o programa da tela (main.py) rodando e o reabre se ele fechar;
+#   2. troca o tema sozinho conforme o perfil (C:\PainelTelemetria\perfis.json):
+#      - algum programa em TELA CHEIA (jogo) por alguns segundos  -> tema do perfil "Jogos";
+#      - saiu da tela cheia por alguns segundos                   -> tema do perfil "Trabalho".
+#      A troca só acontece quando muda de situação, então um tema escolhido à mão
+#      fica na tela até o próximo jogo abrir ou fechar;
+#   3. mostra o ícone na bandeja (perto do relógio, em "mostrar ícones ocultos") com atalhos
+#      para abrir a configuração, trocar de perfil, mudar o brilho, reiniciar e sair;
+#   4. recebe comandos em 127.0.0.1:5681 ("abrir", "reiniciar", "perfis", "sair", "ping")
+#      da janela de configuração e do atalho "Painel de Telemetria".
+# Rode a partir da pasta app:  pythonw painel/iniciar.py [--abrir]
+import json
+import logging
+import os
+import platform
+import socket
+import subprocess
+import sys
+import threading
+import time
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+PAINEL = Path(__file__).resolve().parent
+APP = PAINEL.parent
+DESTINO = APP.parent
+PERFIS = DESTINO / "perfis.json"
+CONFIG_YAML = APP / "config.yaml"
+TEMAS_USUARIO = DESTINO / "temas"
+PORTA_COMANDOS = 5681            # também impede dois iniciadores ao mesmo tempo
+PORTA_CONFIG = 5680              # janela de configuração (painel/config_ui.py)
+SIMULAR_JOGO = DESTINO / "simular_jogo.txt"   # para testes: se existir, finge que há um jogo em tela cheia
+PEDIDO_REINICIO = DESTINO / ".reiniciar"      # alternativa ao comando "reiniciar"
+ICONE_PNG = PAINEL / "icone.png"
+WINDOWS = platform.system() == "Windows"
+
+PERFIS_PADRAO = {"auto": True, "trabalho": "Meu_Trabalho", "jogos": "Meu_Jogos", "entrar_s": 5, "sair_s": 20}
+
+sys.path.insert(0, str(PAINEL))
+os.chdir(APP)
+
+log = logging.getLogger("iniciar")
+
+
+def _configurar_log():
+    try:
+        h = RotatingFileHandler(DESTINO / "iniciar.log", maxBytes=200_000, backupCount=1, encoding="utf-8")
+    except OSError:
+        h = logging.StreamHandler()
+    h.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%d/%m %H:%M:%S"))
+    log.addHandler(h)
+    log.setLevel(logging.INFO)
+
+
+def ler_perfis():
+    p = dict(PERFIS_PADRAO)
+    try:
+        p.update(json.loads(PERFIS.read_text(encoding="utf-8")))
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        log.info("perfis.json inválido: %s", e)
+    return p
+
+
+def gravar_perfis(p):
+    PERFIS.write_text(json.dumps(p, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def enviar_comando(cmd, timeout=2.0):
+    """Manda um comando para o iniciador. Devolve True se ele está rodando e respondeu."""
+    try:
+        with socket.create_connection(("127.0.0.1", PORTA_COMANDOS), timeout=timeout) as s:
+            s.sendall((cmd + "\n").encode("utf-8"))
+            return s.recv(16).startswith(b"ok")
+    except OSError:
+        return False
+
+
+def _pythonw():
+    exe = Path(sys.executable)
+    pyw = exe.with_name("pythonw.exe")
+    return str(pyw if WINDOWS and pyw.exists() else exe)
+
+
+# ------------------------------------------------------------------ tela cheia (Windows)
+if WINDOWS:
+    import ctypes
+    from ctypes import wintypes
+
+    _u32 = ctypes.windll.user32
+    _u32.GetForegroundWindow.restype = wintypes.HWND
+    _u32.MonitorFromWindow.restype = wintypes.HANDLE
+    _u32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+
+    class _MONITORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                    ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+    _IGNORAR = {"Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Windows.UI.Core.CoreWindow",
+                "ForegroundStaging", "MultitaskingViewFrame", "XamlExplorerHostIslandWindow", "LockScreenControllerProxyWindow"}
+
+    def tela_cheia() -> bool:
+        hwnd = _u32.GetForegroundWindow()
+        if not hwnd or not _u32.IsWindowVisible(hwnd):
+            return False
+        nome = ctypes.create_unicode_buffer(256)
+        _u32.GetClassNameW(hwnd, nome, 256)
+        if nome.value in _IGNORAR:
+            return False
+        r = wintypes.RECT()
+        if not _u32.GetWindowRect(hwnd, ctypes.byref(r)):
+            return False
+        mon = _u32.MonitorFromWindow(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
+        mi = _MONITORINFO()
+        mi.cbSize = ctypes.sizeof(_MONITORINFO)
+        if not _u32.GetMonitorInfoW(mon, ctypes.byref(mi)):
+            return False
+        m = mi.rcMonitor
+        return r.left <= m.left and r.top <= m.top and r.right >= m.right and r.bottom >= m.bottom
+else:
+    def tela_cheia() -> bool:
+        return False
+
+
+def jogo_em_tela_cheia() -> bool:
+    if SIMULAR_JOGO.exists():
+        return True
+    try:
+        return tela_cheia()
+    except Exception:
+        return False
+
+
+# ------------------------------------------------------------------ config.yaml e main.py
+def _yaml():
+    from ruamel.yaml import YAML
+    y = YAML()
+    y.preserve_quotes = True
+    y.width = 4096
+    return y
+
+
+def tema_atual():
+    with open(CONFIG_YAML, encoding="utf-8") as fh:
+        return str(_yaml().load(fh)["config"].get("THEME", ""))
+
+
+def definir_tema(pasta):
+    y = _yaml()
+    with open(CONFIG_YAML, encoding="utf-8") as fh:
+        cfg = y.load(fh)
+    cfg["config"]["THEME"] = pasta
+    with open(CONFIG_YAML, "w", encoding="utf-8") as fh:
+        y.dump(cfg, fh)
+
+
+def ler_config():
+    with open(CONFIG_YAML, encoding="utf-8") as fh:
+        return _yaml().load(fh)
+
+
+def definir_brilho(valor):
+    y = _yaml()
+    with open(CONFIG_YAML, encoding="utf-8") as fh:
+        cfg = y.load(fh)
+    cfg["display"]["BRIGHTNESS"] = int(valor)
+    with open(CONFIG_YAML, "w", encoding="utf-8") as fh:
+        y.dump(cfg, fh)
+
+
+def nome_do_tema(pasta):
+    try:
+        return json.loads((TEMAS_USUARIO / f"{pasta}.json").read_text(encoding="utf-8")).get("nome") or pasta
+    except Exception:
+        return pasta
+
+
+def abrir_main():
+    env = dict(os.environ, PAINEL_SEM_BANDEJA="1")   # o ícone da bandeja é o deste iniciador
+    if WINDOWS:
+        return subprocess.Popen([_pythonw(), "main.py"], cwd=str(APP), env=env,
+                                creationflags=0x08000000)  # CREATE_NO_WINDOW
+    return subprocess.Popen([sys.executable, "main.py"], cwd=str(APP), env=env)
+
+
+def config_aberta():
+    try:
+        with socket.create_connection(("127.0.0.1", PORTA_CONFIG), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+def abrir_configuracao():
+    """Abre a janela de configuração, ou traz para a frente se já estiver aberta."""
+    if WINDOWS:
+        try:
+            ctypes.windll.user32.AllowSetForegroundWindow(-1)  # ASFW_ANY
+        except Exception:
+            pass
+    if config_aberta():
+        try:
+            import urllib.request
+            urllib.request.urlopen(f"http://127.0.0.1:{PORTA_CONFIG}/api/focar", timeout=3).read()
+            return
+        except Exception as e:
+            log.info("Não consegui focar a configuração: %s", e)
+    kw = {"creationflags": 0x00000008 | 0x00000200} if WINDOWS else {"start_new_session": True}
+    subprocess.Popen([_pythonw(), "painel/config_ui.py", "--janela"], cwd=str(APP),
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+
+
+class Painel:
+    def __init__(self):
+        self.proc = None
+        self.falhas = 0
+        self.proxima_abertura = 0.0
+        self.inicio_proc = 0.0
+        self.em_jogo = False             # situação confirmada
+        self.desde = None                # quando a situação começou a mudar
+        self.perfis = ler_perfis()
+        self.lido = 0.0
+        self.tema = ""
+        self.brilho = None
+        self.icone = None
+        self.reinicio = threading.Event()
+        self.fim = threading.Event()
+        self.trava = threading.Lock()
+
+    # ---------- estado (lido do disco a cada 3 s) ----------
+    def atualizar_estado(self):
+        antes = (self.tema, self.brilho, self.perfis.get("auto"), self.perfis.get("trabalho"), self.perfis.get("jogos"))
+        self.perfis = ler_perfis()
+        try:
+            cfg = ler_config()
+            self.tema = str(cfg["config"].get("THEME", ""))
+            self.brilho = int(cfg["display"].get("BRIGHTNESS", 20))
+        except Exception as e:
+            log.info("config.yaml ilegível: %s", e)
+        self.lido = time.monotonic()
+        depois = (self.tema, self.brilho, self.perfis.get("auto"), self.perfis.get("trabalho"), self.perfis.get("jogos"))
+        if depois != antes:
+            self.atualizar_icone()
+
+    def atualizar_icone(self):
+        if not self.icone:
+            return
+        try:
+            rotulo = "Tema"
+            if self.tema == self.perfis.get("jogos"):
+                rotulo = "Perfil Jogos"
+            elif self.tema == self.perfis.get("trabalho"):
+                rotulo = "Perfil Trabalho"
+            self.icone.title = f"Painel de Telemetria\n{rotulo}: {nome_do_tema(self.tema)}"[:127]
+            self.icone.update_menu()
+        except Exception as e:
+            log.info("Falha ao atualizar o ícone: %s", e)
+
+    # ---------- ações (menu da bandeja e comandos) ----------
+    def pedir_reinicio(self):
+        self.reinicio.set()
+
+    def usar_perfil(self, perfil):
+        alvo = self.perfis.get(perfil)
+        if not alvo or not (APP / "res" / "themes" / alvo / "theme.yaml").is_file():
+            log.info("Tema do perfil %s não encontrado: %s", perfil, alvo)
+            return
+        with self.trava:
+            definir_tema(alvo)
+        self.pedir_reinicio()
+        self.atualizar_estado()
+
+    def alternar_auto(self):
+        p = ler_perfis()
+        p["auto"] = not p.get("auto")
+        gravar_perfis(p)
+        self.desde = None
+        self.atualizar_estado()
+
+    def mudar_brilho(self, valor):
+        with self.trava:
+            definir_brilho(valor)
+        self.pedir_reinicio()
+        self.atualizar_estado()
+
+    def sair(self):
+        log.info("Saindo pelo menu da bandeja.")
+        self.fim.set()
+        if self.icone:
+            self.icone.stop()
+
+    # ---------- laço principal ----------
+    def laco(self):
+        from parar_painel import parar_main
+        while not self.fim.is_set():
+            try:
+                self.passo(parar_main)
+            except Exception:
+                log.exception("Erro no laço do iniciador")
+            self.fim.wait(1)
+        if self.proc is not None:
+            parar_main()
+
+    def passo(self, parar_main):
+        agora = time.monotonic()
+        if agora - self.lido > 3:
+            self.atualizar_estado()
+        pedido = self.reinicio.is_set()
+        self.reinicio.clear()
+        if PEDIDO_REINICIO.exists():
+            PEDIDO_REINICIO.unlink(missing_ok=True)
+            pedido = True
+
+        # --- perfis automáticos
+        if self.perfis.get("auto"):
+            jogo = jogo_em_tela_cheia()
+            if jogo != self.em_jogo:
+                self.desde = self.desde or agora
+                espera = float(self.perfis.get("entrar_s" if jogo else "sair_s", 5 if jogo else 20))
+                if agora - self.desde >= espera:
+                    self.em_jogo, self.desde = jogo, None
+                    alvo = self.perfis.get("jogos" if jogo else "trabalho")
+                    try:
+                        if alvo and (APP / "res" / "themes" / alvo / "theme.yaml").is_file() and tema_atual() != alvo:
+                            log.info("%s -> tema %s", "Jogo em tela cheia" if jogo else "Saiu do jogo", alvo)
+                            with self.trava:
+                                definir_tema(alvo)
+                            pedido = True
+                            self.atualizar_estado()
+                    except Exception as e:
+                        log.info("Falha ao trocar de tema: %s", e)
+            else:
+                self.desde = None
+        else:
+            self.desde = None
+
+        # --- reinício pedido (tema/brilho trocado): fecha e reabre logo, sem contar como falha
+        if pedido:
+            if self.proc is not None:
+                parar_main()
+                try:
+                    self.proc.wait(5)
+                except Exception:
+                    pass
+                self.proc = None
+            time.sleep(1.0)            # libera a porta da tela
+            self.proxima_abertura = 0.0
+            agora = time.monotonic()
+
+        # --- mantém o main.py rodando
+        if self.proc is not None and self.proc.poll() is not None:
+            codigo = self.proc.returncode
+            self.proc = None
+            vida = agora - self.inicio_proc
+            self.falhas = 0 if vida > 60 else self.falhas + 1
+            espera = min(60, 2 * (2 ** min(self.falhas, 5))) if self.falhas else 1.5
+            self.proxima_abertura = agora + espera
+            log.info("main.py fechou (código %s); reabrindo em %.0f s", codigo, espera)
+        if self.proc is None and agora >= self.proxima_abertura and not self.fim.is_set():
+            self.proc = abrir_main()
+            self.inicio_proc = agora
+
+
+def servidor_comandos(srv, painel):
+    acoes = {
+        "ping": lambda: None,
+        "abrir": abrir_configuracao,
+        "reiniciar": painel.pedir_reinicio,
+        "perfis": painel.atualizar_estado,
+        "trabalho": lambda: painel.usar_perfil("trabalho"),
+        "jogos": lambda: painel.usar_perfil("jogos"),
+        "sair": painel.sair,
+    }
+    while not painel.fim.is_set():
+        try:
+            con, _ = srv.accept()
+        except OSError:
+            break
+        try:
+            con.settimeout(2)
+            cmd = con.recv(64).decode("utf-8", "ignore").strip()
+            acao = acoes.get(cmd)
+            con.sendall(b"ok\n" if acao else b"?\n")
+            con.close()
+            if acao:
+                acao()
+        except Exception as e:
+            log.info("Comando com erro: %s", e)
+
+
+def criar_icone(painel):
+    import pystray
+    from PIL import Image
+
+    def faz(f, *a):
+        return lambda: f(*a)              # pystray chama ações sem argumentos
+
+    def perfil_marcado(perfil):
+        return lambda item: bool(painel.tema) and painel.tema == painel.perfis.get(perfil)
+
+    def brilho_marcado(valor):
+        return lambda item: painel.brilho == valor
+
+    m = pystray.MenuItem
+    menu = pystray.Menu(
+        m("Abrir configurações", faz(abrir_configuracao), default=True),
+        pystray.Menu.SEPARATOR,
+        m("Perfil Trabalho", faz(painel.usar_perfil, "trabalho"), checked=perfil_marcado("trabalho"), radio=True),
+        m("Perfil Jogos", faz(painel.usar_perfil, "jogos"), checked=perfil_marcado("jogos"), radio=True),
+        m("Trocar sozinho ao jogar (tela cheia)", faz(painel.alternar_auto),
+          checked=lambda item: bool(painel.perfis.get("auto"))),
+        m("Brilho da tela", pystray.Menu(*[m(f"{v}%", faz(painel.mudar_brilho, v), checked=brilho_marcado(v), radio=True)
+                                           for v in (5, 10, 20, 35, 50, 75, 100)])),
+        pystray.Menu.SEPARATOR,
+        m("Reiniciar a tela", faz(painel.pedir_reinicio)),
+        m("Sair (a tela para de atualizar)", faz(painel.sair)),
+    )
+    return pystray.Icon("PainelTelemetria", Image.open(ICONE_PNG), "Painel de Telemetria", menu)
+
+
+def main():
+    abrir = "--abrir" in sys.argv
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        srv.bind(("127.0.0.1", PORTA_COMANDOS))
+        srv.listen(5)
+    except OSError:
+        srv.close()
+        if abrir:
+            enviar_comando("abrir")
+        return                            # já está rodando
+    _configurar_log()
+    from parar_painel import parar_main
+    parar_main()                          # um main.py antigo, aberto por fora, seguraria a porta da tela
+    PEDIDO_REINICIO.unlink(missing_ok=True)
+    log.info("Iniciador ligado.")
+
+    painel = Painel()
+    painel.atualizar_estado()
+    threading.Thread(target=servidor_comandos, args=(srv, painel), daemon=True).start()
+    if abrir:
+        threading.Timer(1.0, abrir_configuracao).start()
+
+    icone = None
+    if not os.environ.get("PAINEL_SEM_ICONE"):
+        try:
+            icone = criar_icone(painel)
+        except Exception as e:
+            log.info("Sem ícone na bandeja: %s", e)
+    if icone is None:
+        painel.laco()
+        return
+    painel.icone = icone
+    laco = threading.Thread(target=painel.laco, daemon=True)
+    laco.start()
+
+    def pronto(ic):
+        ic.visible = True
+        painel.atualizar_icone()
+
+    icone.run(setup=pronto)               # fica aqui até "Sair"
+    painel.fim.set()
+    laco.join(10)
+    srv.close()
+    log.info("Iniciador desligado.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        _configurar_log()
+        log.exception("Iniciador parou com erro")
+        raise

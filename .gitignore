@@ -1,0 +1,16 @@
+# gerado pelo scripts/montar_pacote.py
+build/
+dist/
+*.exe
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# arquivos que o painel cria quando roda direto da pasta do repositório
+*.log
+perfis.json
+simular_jogo.txt
+.reiniciar
