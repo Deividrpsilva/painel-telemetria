@@ -1,4 +1,4 @@
-﻿PAINEL DE TELEMETRIA 6.0 - tela Turing Smart Screen 3,5" (USB 1A86:5722)
+﻿PAINEL DE TELEMETRIA 6.1 - tela Turing Smart Screen 3,5" (USB 1A86:5722)
 ========================================================================
 
 Substitui o TURMO usando o turing-smart-screen-python 3.10.0 (open source, GPL-3,
@@ -40,7 +40,8 @@ CONFIGURAR (janela "Painel de Telemetria")
     - ajusta as cores da temperatura (padrão: verde abaixo de 70 °C, amarelo até
       85 °C, vermelho acima);
     - ajusta o brilho e gira a imagem 180°;
-    - clica em "Aplicar na tela".
+    - clica em "Aplicar na tela": a troca de tema e de brilho é na hora, sem
+      reiniciar (girar 180° reinicia a tela, leva alguns segundos).
   Fechar a janela não desliga a tela: o painel continua rodando na bandeja.
 
 PERFIS TRABALHO x JOGOS

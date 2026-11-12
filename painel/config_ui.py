@@ -143,6 +143,13 @@ def reiniciar_painel():
     return "Painel iniciado."
 
 
+def aplicar_painel():
+    """Tema/brilho novos no config.yaml: o iniciador troca na hora, sem reiniciar a tela (painel/troca_tema.py)."""
+    if iniciar.enviar_comando("aplicar"):
+        return ""
+    return reiniciar_painel()
+
+
 def gravar_perfis(d):
     p = iniciar.ler_perfis()
     for k in ("auto", "trabalho", "jogos", "entrar_s", "sair_s"):
@@ -272,7 +279,7 @@ class Handler(BaseHTTPRequestHandler):
                     if tema_atual() == pasta:
                         novo = [p for p in meus if p != pasta][0]
                         definir_tema_atual(novo)
-                        msg = reiniciar_painel()
+                        msg = aplicar_painel()
                 return self._json({"ok": True, "mensagem": msg})
 
             if self.path == "/api/perfis":
@@ -284,7 +291,7 @@ class Handler(BaseHTTPRequestHandler):
                         if not (THEMES_DIR / str(alvo) / "theme.yaml").is_file():
                             return self._json({"erro": f"Tema '{alvo}' não encontrado."}, 400)
                         definir_tema_atual(alvo)
-                        msg = reiniciar_painel()
+                        msg = aplicar_painel()
                     elif not painel_rodando() and platform.system() == "Windows":
                         msg = reiniciar_painel()
                 return self._json({"ok": True, "perfis": p, "mensagem": msg})
@@ -301,9 +308,8 @@ class Handler(BaseHTTPRequestHandler):
                     cfg["display"]["BRIGHTNESS"] = max(0, min(100, int(d.get("brilho", 20))))
                     cfg["display"]["DISPLAY_REVERSE"] = bool(d.get("inverter", False))
                     gravar_config(cfg)
-                    msg = reiniciar_painel()
-                aviso = ""
-                return self._json({"ok": True, "mensagem": f"Aplicado. {msg}{aviso}"})
+                    msg = aplicar_painel()
+                return self._json({"ok": True, "mensagem": f"Aplicado. {msg}".strip()})
 
             self._send(404, b"{}")
         except Exception as e:

@@ -10,8 +10,10 @@
 #      fica na tela até o próximo jogo abrir ou fechar;
 #   3. mostra o ícone na bandeja (perto do relógio, em "mostrar ícones ocultos") com atalhos
 #      para abrir a configuração, trocar de perfil, mudar o brilho, reiniciar e sair;
-#   4. recebe comandos em 127.0.0.1:5681 ("abrir", "reiniciar", "perfis", "sair", "ping")
+#   4. recebe comandos em 127.0.0.1:5681 ("abrir", "aplicar", "reiniciar", "perfis", "sair", "ping")
 #      da janela de configuração e do atalho "Painel de Telemetria".
+#   Trocar tema ou brilho não reinicia o main.py: o pedido vai para o painel/troca_tema.py, que roda
+#   dentro dele (127.0.0.1:5682) e só redesenha a tela. Girar a tela 180° ainda reinicia.
 # Rode a partir da pasta app:  pythonw painel/iniciar.py [--abrir]
 import json
 import logging
@@ -33,6 +35,7 @@ CONFIG_YAML = APP / "config.yaml"
 TEMAS_USUARIO = DESTINO / "temas"
 PORTA_COMANDOS = 5681            # também impede dois iniciadores ao mesmo tempo
 PORTA_CONFIG = 5680              # janela de configuração (painel/config_ui.py)
+PORTA_MAIN = 5682                # main.py: troca de tema/brilho sem reiniciar (painel/troca_tema.py)
 SIMULAR_JOGO = DESTINO / "simular_jogo.txt"   # para testes: se existir, finge que há um jogo em tela cheia
 PEDIDO_REINICIO = DESTINO / ".reiniciar"      # alternativa ao comando "reiniciar"
 ICONE_PNG = PAINEL / "icone.png"
@@ -79,6 +82,16 @@ def enviar_comando(cmd, timeout=2.0):
             return s.recv(16).startswith(b"ok")
     except OSError:
         return False
+
+
+def enviar_main(cmd, timeout=15.0):
+    """Manda um comando para o programa da tela (main.py). Devolve a resposta ou None."""
+    try:
+        with socket.create_connection(("127.0.0.1", PORTA_MAIN), timeout=timeout) as s:
+            s.sendall((cmd + "\n").encode("utf-8"))
+            return s.recv(64).decode("utf-8", "ignore").strip() or None
+    except OSError:
+        return None
 
 
 def _pythonw():
@@ -228,6 +241,7 @@ class Painel:
         self.tema = ""
         self.brilho = None
         self.icone = None
+        self.reverso_em_uso = None       # DISPLAY_REVERSE com que o main.py abriu (mudar exige reiniciar)
         self.reinicio = threading.Event()
         self.fim = threading.Event()
         self.trava = threading.Lock()
@@ -270,9 +284,36 @@ class Painel:
         if not alvo or not (APP / "res" / "themes" / alvo / "theme.yaml").is_file():
             log.info("Tema do perfil %s não encontrado: %s", perfil, alvo)
             return
+        self.trocar_tema(alvo)
+
+    def trocar_tema(self, alvo):
+        """Troca na hora (main.py redesenha); se não der, reinicia o main.py."""
         with self.trava:
             definir_tema(alvo)
-        self.pedir_reinicio()
+        r = enviar_main(f"tema {alvo}") if self.proc is not None else None
+        if r != "ok":
+            log.info("Troca rápida de tema indisponível (%s); reiniciando a tela", r)
+            self.pedir_reinicio()
+        self.atualizar_estado()
+
+    def aplicar(self):
+        """A configuração gravou o config.yaml (tema/brilho/girar): aplica do jeito mais rápido possível."""
+        try:
+            cfg = ler_config()
+            tema = str(cfg["config"].get("THEME", ""))
+            brilho = int(cfg["display"].get("BRIGHTNESS", 20))
+            reverso = bool(cfg["display"].get("DISPLAY_REVERSE", False))
+        except Exception as e:
+            log.info("config.yaml ilegível: %s", e)
+            self.pedir_reinicio()
+            return
+        r = None
+        if self.proc is not None and reverso == self.reverso_em_uso:
+            r = enviar_main(f"tema {tema}")
+            if r == "ok":
+                r = enviar_main(f"brilho {brilho}")
+        if r != "ok":
+            self.pedir_reinicio()
         self.atualizar_estado()
 
     def alternar_auto(self):
@@ -285,7 +326,8 @@ class Painel:
     def mudar_brilho(self, valor):
         with self.trava:
             definir_brilho(valor)
-        self.pedir_reinicio()
+        if self.proc is None or enviar_main(f"brilho {valor}") != "ok":
+            self.pedir_reinicio()
         self.atualizar_estado()
 
     def sair(self):
@@ -330,7 +372,8 @@ class Painel:
                             log.info("%s -> tema %s", "Jogo em tela cheia" if jogo else "Saiu do jogo", alvo)
                             with self.trava:
                                 definir_tema(alvo)
-                            pedido = True
+                            if self.proc is None or enviar_main(f"tema {alvo}") != "ok":
+                                pedido = True
                             self.atualizar_estado()
                     except Exception as e:
                         log.info("Falha ao trocar de tema: %s", e)
@@ -362,6 +405,10 @@ class Painel:
             self.proxima_abertura = agora + espera
             log.info("main.py fechou (código %s); reabrindo em %.0f s", codigo, espera)
         if self.proc is None and agora >= self.proxima_abertura and not self.fim.is_set():
+            try:
+                self.reverso_em_uso = bool(ler_config()["display"].get("DISPLAY_REVERSE", False))
+            except Exception:
+                self.reverso_em_uso = None
             self.proc = abrir_main()
             self.inicio_proc = agora
 
@@ -371,6 +418,7 @@ def servidor_comandos(srv, painel):
         "ping": lambda: None,
         "abrir": abrir_configuracao,
         "reiniciar": painel.pedir_reinicio,
+        "aplicar": painel.aplicar,
         "perfis": painel.atualizar_estado,
         "trabalho": lambda: painel.usar_perfil("trabalho"),
         "jogos": lambda: painel.usar_perfil("jogos"),
@@ -387,8 +435,8 @@ def servidor_comandos(srv, painel):
             acao = acoes.get(cmd)
             con.sendall(b"ok\n" if acao else b"?\n")
             con.close()
-            if acao:
-                acao()
+            if acao:                      # em outra thread: uma troca de tema não segura os próximos comandos
+                threading.Thread(target=acao, daemon=True).start()
         except Exception as e:
             log.info("Comando com erro: %s", e)
 
@@ -400,6 +448,9 @@ def criar_icone(painel):
     def faz(f, *a):
         return lambda: f(*a)              # pystray chama ações sem argumentos
 
+    def em_fundo(f, *a):                  # troca de tema/brilho fora da thread do menu
+        return lambda: threading.Thread(target=f, args=a, daemon=True).start()
+
     def perfil_marcado(perfil):
         return lambda item: bool(painel.tema) and painel.tema == painel.perfis.get(perfil)
 
@@ -410,11 +461,11 @@ def criar_icone(painel):
     menu = pystray.Menu(
         m("Abrir configurações", faz(abrir_configuracao), default=True),
         pystray.Menu.SEPARATOR,
-        m("Perfil Trabalho", faz(painel.usar_perfil, "trabalho"), checked=perfil_marcado("trabalho"), radio=True),
-        m("Perfil Jogos", faz(painel.usar_perfil, "jogos"), checked=perfil_marcado("jogos"), radio=True),
+        m("Perfil Trabalho", em_fundo(painel.usar_perfil, "trabalho"), checked=perfil_marcado("trabalho"), radio=True),
+        m("Perfil Jogos", em_fundo(painel.usar_perfil, "jogos"), checked=perfil_marcado("jogos"), radio=True),
         m("Trocar sozinho ao jogar (tela cheia)", faz(painel.alternar_auto),
           checked=lambda item: bool(painel.perfis.get("auto"))),
-        m("Brilho da tela", pystray.Menu(*[m(f"{v}%", faz(painel.mudar_brilho, v), checked=brilho_marcado(v), radio=True)
+        m("Brilho da tela", pystray.Menu(*[m(f"{v}%", em_fundo(painel.mudar_brilho, v), checked=brilho_marcado(v), radio=True)
                                            for v in (5, 10, 20, 35, 50, 75, 100)])),
         pystray.Menu.SEPARATOR,
         m("Reiniciar a tela", faz(painel.pedir_reinicio)),
@@ -463,7 +514,12 @@ def main():
         ic.visible = True
         painel.atualizar_icone()
 
-    icone.run(setup=pronto)               # fica aqui até "Sair"
+    try:
+        icone.run(setup=pronto)           # fica aqui até "Sair"
+    except Exception as e:                # sem bandeja (ex.: Explorer travado): segue mantendo a tela
+        log.info("Ícone da bandeja parou (%s); seguindo sem ícone", e)
+        painel.icone = None
+        laco.join()
     painel.fim.set()
     laco.join(10)
     srv.close()

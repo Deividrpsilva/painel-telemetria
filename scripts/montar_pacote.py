@@ -4,7 +4,7 @@
 O que faz:
   1. baixa o turing-smart-screen-python (só as partes usadas: programa, LibreHardwareMonitor,
      fontes e temas de 3,5") na versão testada;
-  2. aplica o pequeno ajuste no main.py (o ícone da bandeja passa a ser o do painel);
+  2. aplica pequenos ajustes no main.py (a bandeja fica com o painel e a troca de tema é feita sem reiniciar);
   3. junta com o código deste repositório (painel/, sensores/, instalador/);
   4. gera em dist/:
        PainelTelemetria-<versão>.zip   pacote com Instalar.bat (instalação manual)
@@ -73,20 +73,39 @@ def baixar_upstream() -> Path:
     return destino
 
 
+AJUSTES_MAIN = [
+    # o ícone da bandeja passa a ser o do painel (painel/iniciar.py)
+    ("    try:\n        tray_icon = pystray.Icon(",
+     "    try:\n"
+     "        if os.environ.get(\"PAINEL_SEM_BANDEJA\"):  # Painel de Telemetria: o ícone fica com o painel/iniciar.py\n"
+     "            raise RuntimeError(\"bandeja do Painel de Telemetria\")\n"
+     "        tray_icon = pystray.Icon("),
+    # troca de tema sem reiniciar: precisa entrar antes do agendador ler os intervalos do tema
+    ("    import library.scheduler as scheduler\n",
+     "    try:  # Painel de Telemetria: troca de tema e brilho sem reiniciar (painel/troca_tema.py)\n"
+     "        import painel.troca_tema as troca_tema\n"
+     "    except Exception as e:\n"
+     "        troca_tema = None\n"
+     "        print(\"Troca rápida de tema indisponível:\", e)\n"
+     "    import library.scheduler as scheduler\n"),
+    ("    scheduler.PingStats(); time.sleep(0.25)\n",
+     "    scheduler.PingStats(); time.sleep(0.25)\n"
+     "    if troca_tema:\n"
+     "        troca_tema.iniciar(display)\n"),
+]
+
+
 def ajustar_main(app: Path):
-    """main.py: não cria o ícone próprio na bandeja quando aberto pelo painel (painel/iniciar.py)."""
+    """Pequenos ajustes no main.py original (ver AJUSTES_MAIN)."""
     arq = app / "main.py"
     texto = arq.read_text(encoding="utf-8")
-    if "PAINEL_SEM_BANDEJA" in texto:
-        return
-    antes = "    try:\n        tray_icon = pystray.Icon("
-    depois = ("    try:\n"
-              "        if os.environ.get(\"PAINEL_SEM_BANDEJA\"):  # Painel de Telemetria: o ícone fica com o painel/iniciar.py\n"
-              "            raise RuntimeError(\"bandeja do Painel de Telemetria\")\n"
-              "        tray_icon = pystray.Icon(")
-    if antes not in texto:
-        sys.exit("main.py do turing-smart-screen-python mudou: revise ajustar_main() em scripts/montar_pacote.py")
-    arq.write_text(texto.replace(antes, depois, 1), encoding="utf-8", newline="")
+    for antes, depois in AJUSTES_MAIN:
+        if depois in texto:
+            continue
+        if texto.count(antes) != 1:
+            sys.exit("main.py do turing-smart-screen-python mudou: revise AJUSTES_MAIN em scripts/montar_pacote.py")
+        texto = texto.replace(antes, depois, 1)
+    arq.write_text(texto, encoding="utf-8", newline="")
 
 
 def montar_pacote(upstream: Path) -> Path:

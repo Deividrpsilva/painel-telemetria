@@ -10,7 +10,7 @@ ManifestDPIAware true
 !include "LogicLib.nsh"
 
 !define NOME "Painel de Telemetria"
-!define VERSAO "6.0"
+!define VERSAO "6.1"
 !define CHAVE "Software\Microsoft\Windows\CurrentVersion\Uninstall\PainelTelemetria"
 !define PS '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass'
 
@@ -22,7 +22,7 @@ BrandingText "${NOME} ${VERSAO}"
 ShowInstDetails show
 ShowUninstDetails show
 
-VIProductVersion "6.0.0.0"
+VIProductVersion "6.1.0.0"
 VIAddVersionKey /LANG=1046 "ProductName" "${NOME}"
 VIAddVersionKey /LANG=1046 "FileDescription" "Instalador do ${NOME}"
 VIAddVersionKey /LANG=1046 "FileVersion" "${VERSAO}"

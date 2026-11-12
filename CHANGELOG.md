@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## 6.1
+- Troca de tema quase instantânea, como no TURMO: o programa da tela não fecha mais; só redesenha o fundo e os valores (cerca de 0,1 s no simulador, mais o tempo de envio pela USB).
+- Vale para "Aplicar na tela", "Usar agora" dos perfis, perfil e brilho pela bandeja e para a troca automática ao entrar e sair de jogos.
+- Girar a tela 180° ou escolher um tema de outro tamanho/orientação ainda reinicia a tela.
+- Todos os temas passam a ler os sensores no mesmo ritmo, e só os sensores que o tema mostra.
+
 ## 6.0
 - Instalador `PainelTelemetria-Setup.exe` com desinstalação pelo Windows (opção de manter os temas).
 - Janela de configuração própria (pywebview + WebView2), sem abrir o navegador.

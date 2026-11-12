@@ -28,6 +28,7 @@
 
 - **Janela de configuração própria** (sem navegador): escolha o tema, ligue/desligue e reordene as informações, mude cores, fontes, estilo dos cartões, fundo e brilho, com prévia ao vivo.
 - **Crie quantos temas quiser**, a partir de quatro modelos: Padrão, Trabalho / Produtividade, Jogos e **Código** (a tela parece um editor de programação). Os 38 temas de 3,5" da comunidade também estão incluídos.
+- **Troca de tema na hora**, como no TURMO: o programa da tela continua aberto e só redesenha (girar a tela 180° ainda reinicia).
 - **Perfis automáticos**: quando um jogo fica em tela cheia, a tela troca para o tema de Jogos e volta para o de Trabalho quando você sai.
 - **Ícone na bandeja** do Windows: abre a configuração, troca o perfil, muda o brilho, reinicia ou desliga a tela.
 - **Inicia com o Windows** e reabre sozinho se o programa da tela fechar.
@@ -66,6 +67,7 @@ O painel usa o **[turing-smart-screen-python](https://github.com/mathoudebine/tu
 | `painel/gerador.py` | Transforma as escolhas de um tema (`C:\PainelTelemetria\temas\*.json`) em um tema do turing-smart-screen-python (`background.png` + `theme.yaml`) e desenha a prévia |
 | `painel/config_ui.py` + `painel/ui.html` | Janela de configuração (pywebview + WebView2), servida em `127.0.0.1:5680` |
 | `painel/iniciar.py` | Ícone da bandeja, perfis automáticos por tela cheia e vigia que mantém a tela rodando; recebe comandos em `127.0.0.1:5681` |
+| `painel/troca_tema.py` | Roda dentro do programa da tela e troca tema e brilho sem reiniciar; recebe comandos em `127.0.0.1:5682` |
 | `painel/abrir.py` | Alvo do atalho "Painel de Telemetria" |
 | `painel/parar_painel.py` | Encerra os processos do painel (usado pelo instalador) |
 | `sensores/sensors_custom.py` | Sensores extras: temperaturas com cor dinâmica, watts, VRAM, FPS/frametime e média da sessão, volume do alto-falante e do microfone, SSD, nomes do hardware |
