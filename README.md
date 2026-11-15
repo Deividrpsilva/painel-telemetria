@@ -78,6 +78,7 @@ O painel usa o **[turing-smart-screen-python](https://github.com/mathoudebine/tu
 | `painel/splash.py` | Tela de inicialização (Tkinter): logo animado e progresso real recebido em `127.0.0.1:5683`; fecha sozinha se o carregamento falhar |
 | `painel/iniciar.py` | Ícone da bandeja, perfis automáticos por tela cheia e vigia que mantém a tela rodando; recebe comandos em `127.0.0.1:5681` |
 | `painel/troca_tema.py` | Roda dentro do programa da tela e troca tema e brilho sem reiniciar; recebe comandos em `127.0.0.1:5682` |
+| `painel/placa_video.py` | Com mais de uma GPU, escolhe a dedicada (ou a escolhida na configuração) para os valores de GPU; guarda as placas encontradas em `gpus.json` |
 | `painel/tela_usb.py` | Roda dentro do programa da tela e cuida da porta COM: acha a tela pela VID/PID em qualquer COM, espera se ela não está ligada ou se a porta está ocupada, reconecta depois do reset ou de uma queda e grava o estado em `tela.json` |
 | `painel/abrir.py` | Alvo do atalho "PULSE": mostra a splash e pede a janela ao iniciador |
 | `painel/parar_painel.py` | Encerra os processos do painel (usado pelo instalador) |
@@ -96,6 +97,7 @@ C:\PainelTelemetria
 ├── fundos\           imagens de fundo enviadas pela configuração
 ├── perfis.json       temas dos perfis Trabalho e Jogos
 ├── tela.json         estado da conexão com a tela USB (porta, conectada, ocupada...)
+├── gpus.json         placas de vídeo encontradas e a escolhida para os valores de GPU
 ├── iniciar.log       registro de trocas de perfil, reinícios e por que a tela parou
 └── main_saida.log    erros do programa da tela que não chegam ao app\log.log
 ```

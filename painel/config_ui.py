@@ -42,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gerador  # noqa: E402
 import iniciar  # noqa: E402  (perfis e caminhos do iniciador)
 import tela_usb  # noqa: E402  (estado da conexão com a tela USB: tela.json)
+import placa_video  # noqa: E402  (placas de vídeo encontradas e a escolhida: gpus.json)
 from parar_painel import parar_main  # noqa: E402
 
 APP_DIR = gerador.APP_DIR
@@ -278,6 +279,7 @@ class Handler(BaseHTTPRequestHandler):
                     "admin": _eh_admin() or painel_rodando(),
                     "versao": VERSAO,
                     "tela": estado_tela(),
+                    "gpus": placa_video.ler(),
                 })
             if caminho.startswith("/api/tema/"):
                 pasta = caminho[len("/api/tema/"):]
@@ -361,6 +363,13 @@ class Handler(BaseHTTPRequestHandler):
                     elif not painel_rodando() and platform.system() == "Windows":
                         msg = reiniciar_painel()
                 return self._json({"ok": True, "perfis": p, "mensagem": msg})
+
+            if self.path == "/api/gpu":        # placa de vídeo dos valores de GPU ("" = automático)
+                escolha = str(d.get("escolha") or "").strip()
+                if not placa_video.gravar(escolha=escolha):
+                    return self._json({"erro": "Não foi possível gravar a escolha da placa de vídeo."}, 500)
+                msg = reiniciar_painel()      # a placa é escolhida quando o programa da tela abre
+                return self._json({"ok": True, "mensagem": f"Placa de vídeo salva. {msg}".strip()})
 
             if self.path == "/api/aplicar":
                 pasta = d.get("tema") or gerador.TEMA_PADRAO

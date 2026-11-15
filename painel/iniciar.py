@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import platform
+import re
 import socket
 import subprocess
 import sys
@@ -240,8 +241,30 @@ def _ler_trecho(arq, desde=0, maximo=64_000):
     return [linha.strip() for linha in texto.splitlines() if linha.strip()]
 
 
-def motivo_saida(log_desde):
-    """Por que o main.py fechou: o último erro do log.log desta execução ou a última linha de um traceback."""
+# códigos de saída do Windows quando o processo cai sem passar pelo Python (falha em código nativo)
+FALHAS_WINDOWS = {
+    0xC0000005: "falha de acesso à memória em código nativo",
+    0xC0000409: "falha grave em código nativo",
+    0xC00000FD: "estouro de pilha",
+    0xC0000374: "memória corrompida em código nativo",
+    0xE0434352: "erro não tratado no .NET (LibreHardwareMonitor)",
+    0xC000013A: "encerrado pelo Windows",
+}
+
+
+def descrever_codigo(codigo):
+    if codigo is None:
+        return "?"
+    c = int(codigo) & 0xFFFFFFFF
+    if c >= 0xC0000000:
+        return f"0x{c:08X}" + (f", {FALHAS_WINDOWS[c]}" if c in FALHAS_WINDOWS else "")
+    return str(codigo)
+
+
+def motivo_saida(log_desde, codigo=None):
+    """Por que o main.py fechou: o último erro do log.log desta execução ou a última linha de um traceback.
+    Sem erro registrado, diz isso e mostra a última mensagem do log só como contexto (um aviso qualquer,
+    como o de várias GPUs, não é a causa)."""
     linhas = _ler_trecho(LOG_MAIN, log_desde)
     saida = [x for x in _ler_trecho(SAIDA_MAIN) if not x.startswith("---")]
 
@@ -250,8 +273,21 @@ def motivo_saida(log_desde):
         return achadas[-1].split(nivel, 1)[1].strip()[:300] if achadas else ""
 
     erro_saida = next((x for x in reversed(saida) if "Error" in x or "error" in x or "Exception" in x), "")
-    return (ultima("[CRITICAL]") or ultima("[ERROR]") or erro_saida[:300] or ultima("[WARNING]")
-            or (saida[-1][:300] if saida else ""))
+    erro = ultima("[CRITICAL]") or ultima("[ERROR]") or erro_saida[:300]
+    if erro:
+        return erro
+    contexto = ""
+    for x in reversed(linhas):
+        m = re.search(r"\[(DEBUG|INFO|WARNING)\]\s*(.*)", x)
+        if m and "Too fast" not in x:
+            contexto = m.group(2).strip()[:200]
+            break
+    c = None if codigo is None else int(codigo) & 0xFFFFFFFF
+    if c is not None and c >= 0xC0000000:
+        texto = f"O programa da tela travou ({descrever_codigo(codigo)})"
+    else:
+        texto = f"O programa da tela fechou sem registrar erro (código {descrever_codigo(codigo)})"
+    return texto + (f". Última mensagem do log: {contexto}" if contexto else "")
 
 
 def config_aberta():
@@ -466,8 +502,8 @@ class Painel:
             if codigo == tela_usb.CODIGO_RECONECTAR and self.falhas <= 3:
                 espera = 1.0             # a tela caiu: reabre já para reconectar e redesenhar
             self.proxima_abertura = agora + espera
-            motivo = motivo_saida(self.log_main_desde)
-            log.info("main.py fechou (código %s)%s; reabrindo em %.0f s", codigo,
+            motivo = motivo_saida(self.log_main_desde, codigo)
+            log.info("main.py fechou (código %s)%s; reabrindo em %.0f s", descrever_codigo(codigo),
                      f": {motivo}" if motivo else "", espera)
             if codigo != tela_usb.CODIGO_RECONECTAR:
                 tela_usb.gravar_estado("parado", mensagem="O programa da tela fechou", detalhe=motivo or

@@ -14,6 +14,8 @@
   - com várias telas compatíveis, prefere a que funcionou da última vez e registra a escolha;
   - cabo desconectado, erro de escrita ou envio travado: o programa da tela reabre na hora, reconecta e redesenha;
   - sem administrador a tela continua funcionando (só as leituras que exigem administrador ficam vazias).
+- Placa de vídeo: com duas GPUs (ex.: Radeon integrada do Ryzen + RX dedicada) o PULSE usa a dedicada, e a janela de configuração ganhou a opção **Placa de vídeo** (Tela) para escolher outra. A escolha fica em `C:\PainelTelemetria\gpus.json` e vale depois de reinstalar.
+- Quando o programa da tela fecha, a janela mostra o código de saída (ex.: travamento em código nativo) em vez de um aviso qualquer do log.
 - Diagnóstico: log em português com cada etapa (procura, porta, conexão, envio da imagem) e o motivo técnico de cada falha; o `iniciar.log` diz por que o programa da tela fechou; estado da tela na janela de configuração e no ícone da bandeja (`tela.json`).
 
 ## 6.1

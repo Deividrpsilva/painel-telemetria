@@ -134,6 +134,16 @@ AJUSTES_LHM = [
      "    logger.warning(\n"
      "        \"Sem permissão de administrador: a tela continua, mas leituras como a temperatura da CPU podem ficar \"\n"
      "        \"vazias. Abra o PULSE pelo atalho ou reinicie o PC (a tarefa 'PainelTelemetria' roda como administrador).\")\n"),
+    # Com duas placas AMD (ex.: Radeon integrada do Ryzen + RX dedicada) a biblioteca usava a última que tivesse
+    # sensor de carga, às vezes a integrada. O PULSE escolhe a dedicada ou a escolhida na configuração
+    # (painel/placa_video.py); se algo falhar, segue a lógica original.
+    ("def get_gpu_name() -> str:\n",
+     "def get_gpu_name() -> str:\n"
+     "    try:  # PULSE: placa escolhida na configuração ou a dedicada (painel/placa_video.py)\n"
+     "        import painel.placa_video as placa_video\n"
+     "        return placa_video.escolher(sys.modules[__name__])\n"
+     "    except Exception as e:\n"
+     "        logger.warning(\"Escolha da placa de vídeo do PULSE falhou (%s); usando a da biblioteca\" % e)\n"),
 ]
 
 

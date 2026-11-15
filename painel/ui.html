@@ -266,8 +266,11 @@
 
     <section>
       <h2>Tela</h2>
-      <div class="linha"><span style="width:70px">Brilho</span><input type="range" id="brilho" min="0" max="100" step="5"><b id="brilhoVal" style="width:44px;text-align:right"></b></div>
+      <div class="linha"><span style="width:110px">Brilho</span><input type="range" id="brilho" min="0" max="100" step="5"><b id="brilhoVal" style="width:44px;text-align:right"></b></div>
       <div class="linha"><label><input type="checkbox" id="inverter"> Girar a imagem 180° (tela montada de cabeça para baixo)</label></div>
+      <div class="linha escondido" id="linhaGpu"><span style="width:110px;white-space:nowrap">Placa de vídeo</span>
+        <select id="gpu" style="font-size:13px;padding:5px 8px;min-width:260px"></select>
+        <span class="nota" id="notaGpu" style="margin:0"></span></div>
     </section>
   </div>
 
@@ -322,6 +325,7 @@ async function carregar(selecionar) {
   $("#inverter").checked = E.inverter;
   $("#avisoAdmin").style.display = E.admin ? "none" : "block";
   mostrarTela(E.tela);
+  mostrarGpus(E.gpus);
   $("#opFonte").innerHTML = E.fontes.map(f => `<option>${esc(f)}</option>`).join("");
   desenharPerfis();
   await selecionar_tema(temaSel, false);
@@ -350,6 +354,28 @@ function mostrarTela(t) {
   }
 }
 setInterval(() => api("/api/tela").then(mostrarTela).catch(() => {}), 3000);
+
+// placa de vídeo usada nos valores de GPU (só aparece com mais de uma placa)
+function nomeGpu(n) { return String(n || "").replace(/\((R|TM|tm)\)/g, "").replace(/\s+/g, " ").trim(); }
+function mostrarGpus(g) {
+  const lista = (g && g.detectadas) || [];
+  $("#linhaGpu").classList.toggle("escondido", lista.length < 2);
+  if (lista.length < 2) return;
+  const auto = lista.reduce((a, b) => (b.pontos > a.pontos ? b : a));
+  const tipo = p => p.integrada ? "integrada" : "dedicada";
+  $("#gpu").innerHTML = `<option value="">Automática (${esc(nomeGpu(auto.nome))})</option>` +
+    lista.map(p => `<option value="${esc(p.nome)}">${esc(nomeGpu(p.nome))} (${tipo(p)})</option>`).join("");
+  $("#gpu").value = lista.some(p => p.nome === g.escolha) ? g.escolha : "";
+  $("#notaGpu").textContent = g.em_uso ? `Em uso: ${nomeGpu(g.em_uso)}` : "";
+}
+$("#gpu").addEventListener("change", async () => {
+  status("Trocando a placa de vídeo...");
+  try {
+    const r = await api("/api/gpu", {escolha: $("#gpu").value});
+    status(r.mensagem || "Placa de vídeo salva.", "ok");
+    setTimeout(() => api("/api/estado").then(e => { E.gpus = e.gpus; mostrarGpus(e.gpus); }).catch(() => {}), 15000);
+  } catch (e) { status("Erro: " + e.message, "erro"); }
+});
 
 async function salvarAtual() {
   if (P && temaInfo() && temaInfo().editavel) await api("/api/tema/salvar", {pasta: temaSel, cfg: P});
