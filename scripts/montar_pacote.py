@@ -45,6 +45,12 @@ PADROES = (["/*", "!/tests/", "!/tools/", "!/res/docs/", "!/res/fonts/*/", "!/re
             "/res/themes/default.yaml", "/res/themes/theme_example.yaml"]
            + [f"/res/fonts/{f}/" for f in FONTES] + [f"/res/themes/{t}/" for t in TEMAS])
 
+# Driver que o LibreHardwareMonitor 0.9.5 usa para ler a temperatura da CPU (no lugar do antigo WinRing0).
+# Sem ele a temperatura da CPU fica vazia. Vai junto no pacote e o instalador instala em silêncio.
+PAWNIO_VERSAO = "2.2.0"
+PAWNIO_URL = f"https://github.com/namazso/PawnIO.Setup/releases/download/{PAWNIO_VERSAO}/PawnIO_setup.exe"
+PAWNIO_SHA256 = "1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032"
+
 ARQUIVOS_INSTALADOR = ["instalar.ps1", "desinstalar.ps1", "Instalar.bat", "Instalar (simulador).bat",
                        "Atualizar tema.bat", "LEIAME.txt", "requirements-painel.txt"]
 
@@ -57,6 +63,23 @@ def rodar(*cmd, **kw):
 def versao():
     m = re.search(r'!define VERSAO "([^"]+)"', (RAIZ / "instalador" / "setup.nsi").read_text(encoding="utf-8"))
     return m.group(1) if m else "dev"
+
+
+def baixar_pawnio() -> Path:
+    import hashlib
+    import urllib.request
+    destino = BUILD / f"PawnIO_setup-{PAWNIO_VERSAO}.exe"
+    if not destino.is_file():
+        print(f"Baixando o PawnIO {PAWNIO_VERSAO}...")
+        tmp = destino.with_suffix(".tmp")
+        with urllib.request.urlopen(PAWNIO_URL, timeout=120) as r, open(tmp, "wb") as f:
+            shutil.copyfileobj(r, f)
+        tmp.replace(destino)
+    h = hashlib.sha256(destino.read_bytes()).hexdigest()
+    if h != PAWNIO_SHA256:
+        destino.unlink()
+        sys.exit(f"PawnIO_setup.exe baixado não confere (sha256 {h}); esperado {PAWNIO_SHA256}")
+    return destino
 
 
 def baixar_upstream() -> Path:
@@ -101,7 +124,12 @@ AJUSTES_MAIN = [
      "        tela_usb.instalar()\n"
      "    except Exception as e:\n"
      "        tela_usb = None\n"
-     "        logger.exception(\"Conexão robusta com a tela indisponível: %s\", e)\n"),
+     "        logger.exception(\"Conexão robusta com a tela indisponível: %s\", e)\n"
+     "    try:  # PULSE: desenho sem pedidos misturados, sem sobras de texto e só do que mudou (painel/envio_tela.py)\n"
+     "        import painel.envio_tela as envio_tela\n"
+     "        envio_tela.instalar()\n"
+     "    except Exception as e:\n"
+     "        logger.exception(\"Envio otimizado para a tela indisponível: %s\", e)\n"),
     ("    display.initialize_display()\n",
      "    display.initialize_display()\n"
      "    if tela_usb:\n"
@@ -144,6 +172,38 @@ AJUSTES_LHM = [
      "        return placa_video.escolher(sys.modules[__name__])\n"
      "    except Exception as e:\n"
      "        logger.warning(\"Escolha da placa de vídeo do PULSE falhou (%s); usando a da biblioteca\" % e)\n"),
+    # Várias threads (CPU, GPU, sensores do PULSE) pediam a mesma peça ao mesmo tempo, e o LibreHardwareMonitor
+    # não aceita leituras simultâneas: às vezes o programa da tela caía (NullReferenceException) e, num jogo, as
+    # leituras repetidas da placa de vídeo atrasavam o FPS. Agora é uma leitura por vez e no máximo uma a cada
+    # 0,5 s por peça (quem pede logo depois usa a mesma leitura).
+    ("def get_hw_and_update(hwtype: Hardware.HardwareType, name: str = None) -> Hardware.Hardware:\n",
+     "import threading as _pulse_threading\n"
+     "import time as _pulse_time\n"
+     "_pulse_trava = _pulse_threading.RLock()\n"
+     "_pulse_lido = {}\n"
+     "\n"
+     "\n"
+     "def _pulse_atualizar(hardware):\n"
+     "    \"\"\"PULSE: uma leitura por vez e no máximo uma a cada 0,5 s por peça.\"\"\"\n"
+     "    with _pulse_trava:\n"
+     "        try:\n"
+     "            chave = str(hardware.Identifier)\n"
+     "        except Exception:\n"
+     "            chave = str(hardware.HardwareType) + str(hardware.Name)\n"
+     "        if _pulse_time.monotonic() - _pulse_lido.get(chave, -1.0) >= 0.5:\n"
+     "            hardware.Update()\n"
+     "            _pulse_lido[chave] = _pulse_time.monotonic()\n"
+     "\n"
+     "\n"
+     "def get_hw_and_update(hwtype: Hardware.HardwareType, name: str = None) -> Hardware.Hardware:\n"),
+    ("            if (name and hardware.Name == name) or name is None:\n"
+     "                hardware.Update()\n",
+     "            if (name and hardware.Name == name) or name is None:\n"
+     "                _pulse_atualizar(hardware)\n"),
+    ("hardware.HardwareType == Hardware.HardwareType.Network and hardware.Name == if_name:\n"
+     "            hardware.Update()\n",
+     "hardware.HardwareType == Hardware.HardwareType.Network and hardware.Name == if_name:\n"
+     "            _pulse_atualizar(hardware)\n"),
 ]
 
 
@@ -179,6 +239,8 @@ def montar_pacote(upstream: Path) -> Path:
     for nome in ARQUIVOS_INSTALADOR:
         shutil.copy2(RAIZ / "instalador" / nome, pacote / nome)
     shutil.copytree(RAIZ / "instalador" / "wheels", pacote / "wheels")
+    (pacote / "drivers").mkdir()
+    shutil.copy2(baixar_pawnio(), pacote / "drivers" / "PawnIO_setup.exe")
     return pacote
 
 

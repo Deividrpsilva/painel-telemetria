@@ -12,7 +12,7 @@ ManifestDPIAware true
 !include "LogicLib.nsh"
 
 !define NOME "PULSE — System Telemetry"
-!define VERSAO "7.0"
+!define VERSAO "7.1"
 !define AUTOR "Deivid Robinson"
 !define SITE "https://github.com/Deividrpsilva/painel-telemetria"
 !define CHAVE "Software\Microsoft\Windows\CurrentVersion\Uninstall\PainelTelemetria"

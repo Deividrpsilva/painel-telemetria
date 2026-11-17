@@ -30,9 +30,10 @@
 - **Tela de inicialização animada**: ao abrir o PULSE, o logo "respira" enquanto a janela carrega, com a barra de progresso seguindo as etapas reais.
 - **Janela de configuração própria** (sem navegador): escolha o tema, ligue/desligue e reordene as informações, mude cores, fontes, estilo dos cartões, fundo e brilho, com prévia ao vivo.
 - **Crie quantos temas quiser**, a partir de quatro modelos: Padrão, Trabalho / Produtividade, Jogos e **Código** (a tela parece um editor de programação). Os 38 temas de 3,5" da comunidade também estão incluídos.
-- **Troca de tema na hora**, como no TURMO: o programa da tela continua aberto e só redesenha (girar a tela 180° ainda reinicia).
-- **Perfis automáticos**: quando um jogo fica em tela cheia, a tela troca para o tema de Jogos e volta para o de Trabalho quando você sai.
-- **Ícone na bandeja** do Windows: abre a configuração, troca o perfil, muda o brilho, reinicia ou desliga a tela.
+- **Troca de tema na hora**, como no TURMO: o programa da tela continua aberto e só redesenha (girar a tela 180° ainda reinicia). Só os pedaços da imagem que mudaram vão para a tela.
+- **Modo gamer**: quando um jogo fica em tela cheia, a tela passa para o tema e o brilho do modo gamer, e ao sair volta ao tema que estava antes. Tudo ajustável na configuração, e dá para ligar à mão pela bandeja.
+- **Fecha o TURMO** se ele abrir com o Windows e tentar pegar a tela (opcional).
+- **Ícone na bandeja** do Windows: abre a configuração, liga o modo gamer, muda o brilho, reinicia ou desliga a tela.
 - **Tela Sobre** com a versão instalada, o desenvolvedor, o repositório e os créditos.
 - **Inicia com o Windows** e reabre sozinho se o programa da tela fechar.
 
@@ -62,7 +63,7 @@ Para desinstalar, use **Configurações > Aplicativos > PULSE — System Telemet
 |---|---|
 | Sistema | Windows 10 ou 11, 64 bits |
 | Tela | Turing Smart Screen 3,5" (USB `VID_1A86 PID_5722`, revisão A) e compatíveis com o [turing-smart-screen-python](https://github.com/mathoudebine/turing-smart-screen-python) |
-| Sensores | LibreHardwareMonitor (incluído); por isso o painel roda como administrador |
+| Sensores | LibreHardwareMonitor (incluído); por isso o painel roda como administrador. A temperatura da CPU usa o driver [PawnIO](https://github.com/namazso/PawnIO.Setup) (GPL-2.0), que o instalador instala |
 | Janela | WebView2 do Windows (já vem no Windows 10/11 atualizado) |
 
 Testado com Ryzen 5 8500G e Radeon RX 6650 XT. O FPS vem do driver AMD pelo LibreHardwareMonitor e aparece como `--` fora de jogos ou em placas que não fornecem esse sensor. Os watts aparecem como `--` quando o hardware não tem esse sensor.
@@ -76,9 +77,10 @@ O painel usa o **[turing-smart-screen-python](https://github.com/mathoudebine/tu
 | `painel/gerador.py` | Transforma as escolhas de um tema (`C:\PainelTelemetria\temas\*.json`) em um tema do turing-smart-screen-python (`background.png` + `theme.yaml`) e desenha a prévia |
 | `painel/config_ui.py` + `painel/ui.html` | Janela de configuração (pywebview + WebView2), servida em `127.0.0.1:5680`, com a tela Sobre |
 | `painel/splash.py` | Tela de inicialização (Tkinter): logo animado e progresso real recebido em `127.0.0.1:5683`; fecha sozinha se o carregamento falhar |
-| `painel/iniciar.py` | Ícone da bandeja, perfis automáticos por tela cheia e vigia que mantém a tela rodando; recebe comandos em `127.0.0.1:5681` |
+| `painel/iniciar.py` | Ícone da bandeja, modo gamer (por tela cheia ou à mão, volta ao tema de antes), fecha o TURMO e mantém a tela rodando; recebe comandos em `127.0.0.1:5681` |
 | `painel/troca_tema.py` | Roda dentro do programa da tela e troca tema e brilho sem reiniciar; recebe comandos em `127.0.0.1:5682` |
 | `painel/placa_video.py` | Com mais de uma GPU, escolhe a dedicada (ou a escolhida na configuração) para os valores de GPU; guarda as placas encontradas em `gpus.json` |
+| `painel/envio_tela.py` | Roda dentro do programa da tela: manda cada desenho inteiro de uma vez (sem misturar com outro sensor), apaga sobras do texto anterior e só envia os pedaços da imagem que mudaram |
 | `painel/tela_usb.py` | Roda dentro do programa da tela e cuida da porta COM: acha a tela pela VID/PID em qualquer COM, espera se ela não está ligada ou se a porta está ocupada, reconecta depois do reset ou de uma queda e grava o estado em `tela.json` |
 | `painel/abrir.py` | Alvo do atalho "PULSE": mostra a splash e pede a janela ao iniciador |
 | `painel/parar_painel.py` | Encerra os processos do painel (usado pelo instalador) |
@@ -95,7 +97,9 @@ C:\PainelTelemetria
 ├── app\              programa (turing-smart-screen-python + pasta painel)
 ├── temas\            seus temas (*.json), mantidos ao reinstalar
 ├── fundos\           imagens de fundo enviadas pela configuração
-├── perfis.json       temas dos perfis Trabalho e Jogos
+├── perfis.json       modo gamer (tema, brilho, tempos, voltar ao anterior) e fechar o TURMO
+├── modo_gamer.json   se o modo gamer está ligado e o tema/brilho de antes
+├── drivers\          instalador do PawnIO (temperatura da CPU)
 ├── tela.json         estado da conexão com a tela USB (porta, conectada, ocupada...)
 ├── gpus.json         placas de vídeo encontradas e a escolhida para os valores de GPU
 ├── iniciar.log       registro de trocas de perfil, reinícios e por que a tela parou
@@ -109,7 +113,7 @@ A janela de configuração mostra o estado da tela USB embaixo da prévia. O `ap
 | No log | O que fazer |
 |---|---|
 | `Nenhuma porta COM com VID 1A86 / PID 5722` | A tela não aparece no Windows: troque de entrada USB ou de cabo e confira em Gerenciador de Dispositivos > Portas (COM e LPT) |
-| `A porta COMx existe, mas outro programa está usando` | Feche o TURMO ou outro programa da tela; o PULSE conecta sozinho quando a porta for liberada |
+| `A porta COMx existe, mas outro programa está usando` | Feche o TURMO ou outro programa da tela; o PULSE conecta sozinho quando a porta for liberada. O TURMO é fechado sozinho se a opção "Fechar o TURMO" estiver ligada |
 | `Encontradas 2 telas compatíveis` | Mostra qual porta foi usada e por quê; para fixar uma, ponha `COM_PORT: "COMx"` no `app\config.yaml` |
 | `Falha na comunicação com a tela` / `Tentando reconectar` | A tela caiu durante o uso; o programa da tela reabre e redesenha sozinho |
 | `Imagem enviada com sucesso` | A conexão está boa |

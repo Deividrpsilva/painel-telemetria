@@ -32,6 +32,7 @@ _trava = threading.Lock()
 _display = None
 _em_andamento = 0              # leituras de sensor desenhando agora
 _contador = threading.Lock()
+_erros_vistos = set()
 
 
 def normalizar(tema):
@@ -82,6 +83,14 @@ def _guardado(original, caminho, sempre=False):
             _em_andamento += 1
         try:
             return original(*a, **kw)
+        except Exception as e:
+            # um valor estranho (ex.: NaN da CPU) não pode matar a thread do sensor: ela pararia de
+            # atualizar até reiniciar o programa. Registra uma vez por tipo de erro e segue.
+            chave = (caminho, type(e).__name__, str(e)[:80])
+            if chave not in _erros_vistos:
+                _erros_vistos.add(chave)
+                logger.warning("Leitura de %s falhou e foi ignorada: %s: %s" % ("/".join(caminho), type(e).__name__, e))
+            return None
         finally:
             with _contador:
                 _em_andamento -= 1
@@ -142,6 +151,11 @@ def trocar_tema(pasta):
         config.CONFIG_DATA["config"]["THEME"] = pasta
         config.THEME_DATA = novo
         lcd = _display.lcd
+        try:
+            import painel.envio_tela as envio_tela
+            envio_tela.esquecer_textos()   # as caixas de texto do tema anterior não valem para o novo
+        except Exception:
+            pass
         for chave in [k for k in lcd.image_cache if str(k).startswith(novo["PATH"])]:
             del lcd.image_cache[chave]  # tema editado: o fundo mudou com o mesmo nome de arquivo
         _display.display_static_images()

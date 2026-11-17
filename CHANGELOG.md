@@ -1,5 +1,19 @@
 # Histórico de versões
 
+## 7.1
+- **FPS sem números cortados e sem travar**:
+  - os desenhos de cada sensor não se misturam mais na fila da tela (antes o comando de um podia receber os dados de outro e aparecer pedaço de número ou lixo);
+  - ao trocar um valor por outro mais baixo (ex.: FPS de "144" para "--"), a parte que sobrava do valor anterior é apagada;
+  - quando o driver deixa de mandar o FPS por um instante, o último valor fica até 3 s na tela em vez de piscar "--";
+  - as leituras do LibreHardwareMonitor são feitas uma por vez e reaproveitadas no mesmo meio segundo: num jogo a placa de vídeo era lida 3 vezes por segundo, de threads diferentes, o que atrasava a tela e às vezes derrubava o programa (NullReferenceException).
+- **Só o que mudou vai para a tela**: o PULSE guarda uma cópia da imagem da tela e manda só os pedaços que mudaram. Com valores parados nada é reenviado (antes: uns 55 KB/s o tempo todo, numa tela que recebe uns 250 KB/s).
+- **Troca de tema mais rápida**: 1,3 s em vez de 1,8 s no simulador com a mesma velocidade da tela; a volta do modo gamer passou de 20 s para 5 s depois de sair do jogo, e a entrada de 5 s para 3 s (ajustáveis).
+- **Temperatura da CPU**: o LibreHardwareMonitor 0.9.5 lê a CPU pelo driver **PawnIO**, que não vinha com o PULSE, e por isso a temperatura ficava vazia. O instalador agora instala o PawnIO 2.2.0 em silêncio, e a janela de configuração avisa e oferece instalar se ele faltar.
+- **Modo gamer editável** (seção "Modo gamer" da configuração): tema, brilho próprio, tempo para ligar e desligar, botão **Editar este tema** e botão para ligar/desligar à mão. Na bandeja, "Perfil Jogos" virou **Modo gamer** (liga/desliga).
+- **Ao sair do modo gamer, volta ao tema (e ao brilho) que estava antes**, em vez de ir sempre para o tema de Trabalho (dá para desligar essa opção).
+- **TURMO fechado sozinho**: se o TURMO abrir (ele inicia com o Windows pela tarefa agendada dele e pega a porta da tela), o PULSE o fecha em até 2 s. Opção "Fechar o TURMO quando ele abrir" na seção Tela.
+- Um valor estranho de um sensor (ex.: NaN no uso da CPU) não para mais de atualizar aquele item até reiniciar: o erro é registrado uma vez e a leitura segue.
+
 ## 7.0 — PULSE
 - Novo nome e identidade visual: **PULSE — System Telemetry** (antes "Painel de Telemetria").
 - Logo em SVG e PNG (fundo preto e transparente), ícone próprio do Windows e da bandeja, imagens do instalador (pasta `marca/`).

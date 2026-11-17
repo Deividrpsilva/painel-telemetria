@@ -212,12 +212,16 @@ def aplicar_painel():
 
 def gravar_perfis(d):
     p = iniciar.ler_perfis()
-    for k in ("auto", "trabalho", "jogos", "entrar_s", "sair_s"):
+    for k in ("auto", "trabalho", "jogos", "entrar_s", "sair_s", "jogos_brilho", "voltar_anterior", "fechar_turmo"):
         if k in d:
             p[k] = d[k]
     p["auto"] = bool(p.get("auto"))
-    p["entrar_s"] = max(1, min(120, int(p.get("entrar_s", 5))))
-    p["sair_s"] = max(1, min(600, int(p.get("sair_s", 20))))
+    p["voltar_anterior"] = bool(p.get("voltar_anterior", True))
+    p["fechar_turmo"] = bool(p.get("fechar_turmo", True))
+    p["entrar_s"] = max(1, min(120, int(p.get("entrar_s", 3))))
+    p["sair_s"] = max(1, min(600, int(p.get("sair_s", 5))))
+    b = p.get("jogos_brilho")
+    p["jogos_brilho"] = None if b in (None, "", "manter") else max(0, min(100, int(b)))
     iniciar.gravar_perfis(p)
     iniciar.enviar_comando("perfis")   # atualiza o menu da bandeja
     return p
@@ -280,6 +284,8 @@ class Handler(BaseHTTPRequestHandler):
                     "versao": VERSAO,
                     "tela": estado_tela(),
                     "gpus": placa_video.ler(),
+                    "gamer": iniciar.ler_modo_gamer(),
+                    "pawnio": iniciar.pawnio_instalado(),
                 })
             if caminho.startswith("/api/tema/"):
                 pasta = caminho[len("/api/tema/"):]
@@ -358,11 +364,34 @@ class Handler(BaseHTTPRequestHandler):
                         alvo = p.get(d["usar"])
                         if not (THEMES_DIR / str(alvo) / "theme.yaml").is_file():
                             return self._json({"erro": f"Tema '{alvo}' não encontrado."}, 400)
-                        definir_tema_atual(alvo)
-                        msg = aplicar_painel()
+                        # pelo iniciador: o modo gamer guarda o tema de antes para voltar a ele depois
+                        if not iniciar.enviar_comando("jogos" if d["usar"] == "jogos" else "trabalho"):
+                            definir_tema_atual(alvo)
+                            msg = aplicar_painel()
                     elif not painel_rodando() and platform.system() == "Windows":
                         msg = reiniciar_painel()
                 return self._json({"ok": True, "perfis": p, "mensagem": msg})
+
+            if self.path == "/api/gamer":      # liga/desliga o modo gamer (como na bandeja)
+                ligar = bool(d.get("ligar"))
+                if not iniciar.enviar_comando("jogos" if ligar else "sair_gamer"):
+                    return self._json({"erro": "O PULSE não está rodando. Clique em “Aplicar na tela” primeiro."}, 400)
+                time.sleep(0.3)
+                return self._json({"ok": True, "gamer": iniciar.ler_modo_gamer(),
+                                   "mensagem": "Modo gamer ligado." if ligar else "Modo gamer desligado."})
+
+            if self.path == "/api/pawnio":     # instala o driver da temperatura da CPU (pede administrador)
+                exe = iniciar.DESTINO / "drivers" / "PawnIO_setup.exe"
+                if platform.system() != "Windows":
+                    return self._json({"erro": "Só no Windows."}, 400)
+                if not exe.is_file():
+                    return self._json({"erro": f"Instalador não encontrado em {exe}. Reinstale o PULSE."}, 400)
+                import ctypes
+                r = ctypes.windll.shell32.ShellExecuteW(None, "runas", str(exe), "-install", str(exe.parent), 1)
+                if r <= 32:
+                    return self._json({"erro": f"O Windows não abriu o instalador (código {r})."}, 400)
+                return self._json({"ok": True, "mensagem": "Siga a janela do instalador do PawnIO. Quando terminar, "
+                                                           "a tela reinicia sozinha e a temperatura da CPU aparece."})
 
             if self.path == "/api/gpu":        # placa de vídeo dos valores de GPU ("" = automático)
                 escolha = str(d.get("escolha") or "").strip()

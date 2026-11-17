@@ -103,6 +103,10 @@
   .perfil h3 { margin: 0 0 4px; font-size: 14px; }
   .perfil select { width: 100%; font-size: 13px; padding: 5px 8px; margin: 8px 0; }
   .perfil.ativo { border-color: var(--ok); }
+  .perfil .campo { display: grid; grid-template-columns: 84px 1fr; align-items: center; gap: 8px; }
+  .perfil .campo span { white-space: nowrap; }
+  .perfil .campo span { font-size: 13px; color: var(--fraco); }
+  .perfil .campo select { margin: 4px 0; }
   .avisoPrevia { color: #ffd28a; }
 </style>
 </head>
@@ -176,6 +180,8 @@
 <main>
   <div>
     <div class="aviso" id="avisoTela"></div>
+    <div class="aviso" id="avisoPawnio"><b>A temperatura da CPU precisa do driver PawnIO</b>, que não está instalado neste PC (o LibreHardwareMonitor usa ele para ler a CPU).
+      <button class="btn" id="instalarPawnio" style="margin-left:8px">Instalar o driver</button></div>
     <div class="aviso" id="avisoAdmin">O painel da tela não está rodando. Clique em “Aplicar na tela” para iniciá-lo (ou reinicie o computador).</div>
 
     <section>
@@ -193,19 +199,30 @@
     </section>
 
     <section>
-      <h2>Perfis (Trabalho × Jogos)</h2>
-      <label class="linha" style="margin-top:0;flex-wrap:nowrap"><input type="checkbox" id="perfAuto" style="flex:none"> <span>Trocar sozinho: quando um jogo (ou qualquer programa) fica em <b>tela cheia</b>, a tela mostra o tema de <b>Jogos</b>; ao sair, volta para o de <b>Trabalho</b>.</span></label>
-      <div class="perfis">
-        <div class="perfil" id="perfTrabalho"><h3>💼 Trabalho / Uso geral</h3>
-          <select id="perfTemaTrabalho"></select>
-          <div class="linha" style="margin:0"><button class="btn" data-usar="trabalho">Usar agora</button>
-            <label class="nota" style="margin:0">volta após <input type="number" id="perfSair" min="1" max="600" style="width:56px"> s</label></div></div>
-        <div class="perfil" id="perfJogos"><h3>🎮 Jogos</h3>
-          <select id="perfTemaJogos"></select>
-          <div class="linha" style="margin:0"><button class="btn" data-usar="jogos">Usar agora</button>
-            <label class="nota" style="margin:0">entra após <input type="number" id="perfEntrar" min="1" max="120" style="width:56px"> s</label></div></div>
+      <h2>Modo gamer</h2>
+      <div class="linha" style="margin-top:0">
+        <button class="btn prim" id="gamerBotao">Ligar modo gamer</button>
+        <span class="nota" id="gamerEstado" style="margin:0"></span>
       </div>
-      <div class="nota">Um tema escolhido à mão continua na tela até o próximo jogo abrir ou fechar. Vídeo em tela cheia também conta como “jogo”.</div>
+      <label class="linha" style="flex-wrap:nowrap"><input type="checkbox" id="perfAuto" style="flex:none"> <span>Ligar sozinho quando um jogo (ou vídeo) ficar em <b>tela cheia</b> e desligar quando sair dela.</span></label>
+      <div class="perfis">
+        <div class="perfil" id="perfJogos"><h3>🎮 Quando o modo gamer liga</h3>
+          <div class="campo"><span>Tema</span><select id="perfTemaJogos"></select></div>
+          <div class="campo"><span>Brilho</span><select id="perfBrilhoJogos">
+            <option value="">Manter o brilho atual</option>
+            <option value="5">5%</option><option value="10">10%</option><option value="20">20%</option><option value="35">35%</option>
+            <option value="50">50%</option><option value="75">75%</option><option value="100">100%</option></select></div>
+          <div class="linha" style="margin:6px 0 0"><button class="btn" id="gamerEditar">Editar este tema</button>
+            <label class="nota" style="margin:0">liga após <input type="number" id="perfEntrar" min="1" max="120" style="width:52px"> s</label></div>
+        </div>
+        <div class="perfil" id="perfTrabalho"><h3>💼 Quando o modo gamer desliga</h3>
+          <label class="linha" style="margin:4px 0 6px;flex-wrap:nowrap"><input type="checkbox" id="perfVoltar" style="flex:none"> <span>Voltar ao tema (e ao brilho) que estava antes</span></label>
+          <div class="campo"><span id="rotuloTrabalho">Senão, usar</span><select id="perfTemaTrabalho"></select></div>
+          <div class="linha" style="margin:6px 0 0"><button class="btn" data-usar="trabalho">Usar agora</button>
+            <label class="nota" style="margin:0">desliga após <input type="number" id="perfSair" min="1" max="600" style="width:52px"> s</label></div>
+        </div>
+      </div>
+      <div class="nota">Para mudar o visual do modo gamer (cores, blocos, fontes), clique em <b>Editar este tema</b>: o editor abre logo abaixo e a prévia mostra o resultado. O modo gamer também liga e desliga pelo ícone da bandeja.</div>
     </section>
 
     <div id="editor">
@@ -268,6 +285,7 @@
       <h2>Tela</h2>
       <div class="linha"><span style="width:110px">Brilho</span><input type="range" id="brilho" min="0" max="100" step="5"><b id="brilhoVal" style="width:44px;text-align:right"></b></div>
       <div class="linha"><label><input type="checkbox" id="inverter"> Girar a imagem 180° (tela montada de cabeça para baixo)</label></div>
+      <div class="linha"><label><input type="checkbox" id="fecharTurmo"> Fechar o TURMO quando ele abrir (ele disputa a tela com o PULSE ao ligar o PC)</label></div>
       <div class="linha escondido" id="linhaGpu"><span style="width:110px;white-space:nowrap">Placa de vídeo</span>
         <select id="gpu" style="font-size:13px;padding:5px 8px;min-width:260px"></select>
         <span class="nota" id="notaGpu" style="margin:0"></span></div>
@@ -326,6 +344,7 @@ async function carregar(selecionar) {
   $("#avisoAdmin").style.display = E.admin ? "none" : "block";
   mostrarTela(E.tela);
   mostrarGpus(E.gpus);
+  $("#avisoPawnio").style.display = E.pawnio === false ? "block" : "none";
   $("#opFonte").innerHTML = E.fontes.map(f => `<option>${esc(f)}</option>`).join("");
   desenharPerfis();
   await selecionar_tema(temaSel, false);
@@ -436,22 +455,72 @@ function desenharPerfis() {
   $("#perfTemaTrabalho").innerHTML = ops; $("#perfTemaJogos").innerHTML = ops;
   $("#perfTemaTrabalho").value = pf.trabalho; $("#perfTemaJogos").value = pf.jogos;
   $("#perfAuto").checked = pf.auto; $("#perfEntrar").value = pf.entrar_s; $("#perfSair").value = pf.sair_s;
-  $("#perfTrabalho").classList.toggle("ativo", E.tema_atual === pf.trabalho);
-  $("#perfJogos").classList.toggle("ativo", E.tema_atual === pf.jogos);
+  $("#perfBrilhoJogos").value = pf.jogos_brilho == null ? "" : String(pf.jogos_brilho);
+  if (!$("#perfBrilhoJogos").value && pf.jogos_brilho != null) {   // valor fora da lista
+    $("#perfBrilhoJogos").insertAdjacentHTML("beforeend", `<option value="${pf.jogos_brilho}">${pf.jogos_brilho}%</option>`);
+    $("#perfBrilhoJogos").value = String(pf.jogos_brilho);
+  }
+  $("#perfVoltar").checked = pf.voltar_anterior !== false;
+  $("#rotuloTrabalho").textContent = pf.voltar_anterior !== false ? "Senão, usar" : "Usar";
+  $("#fecharTurmo").checked = pf.fechar_turmo !== false;
+  mostrarGamer();
+}
+function mostrarGamer() {
+  const g = E.gamer || {}, ligado = !!g.ativo;
+  $("#gamerBotao").textContent = ligado ? "Desligar modo gamer" : "Ligar modo gamer";
+  let txt = ligado ? `Ligado${g.origem === "auto" ? " sozinho (jogo em tela cheia)" : ""}.` : "Desligado.";
+  if (ligado && g.antes && g.antes.tema && $("#perfVoltar").checked) {
+    const t = E.temas.find(x => x.pasta === g.antes.tema);
+    txt += ` Ao desligar, volta para “${t ? t.nome : g.antes.tema}”.`;
+  }
+  $("#gamerEstado").textContent = txt;
+  $("#perfJogos").classList.toggle("ativo", ligado);
+  $("#perfTrabalho").classList.toggle("ativo", !ligado && E.tema_atual === E.perfis.trabalho);
 }
 async function salvarPerfis(usar) {
+  const b = $("#perfBrilhoJogos").value;
   const perfis = {auto: $("#perfAuto").checked, trabalho: $("#perfTemaTrabalho").value, jogos: $("#perfTemaJogos").value,
-                  entrar_s: parseInt($("#perfEntrar").value) || 5, sair_s: parseInt($("#perfSair").value) || 20};
+                  entrar_s: parseInt($("#perfEntrar").value) || 3, sair_s: parseInt($("#perfSair").value) || 5,
+                  jogos_brilho: b === "" ? null : parseInt(b), voltar_anterior: $("#perfVoltar").checked,
+                  fechar_turmo: $("#fecharTurmo").checked};
   try {
     if (usar) { await salvarAtual(); status("Aplicando…"); }
     const r = await api("/api/perfis", {perfis, usar});
     E.perfis = r.perfis;
-    if (usar) { await carregar(r.perfis[usar]); status(`Perfil ${usar === "jogos" ? "Jogos" : "Trabalho"} na tela. ${r.mensagem || ""}`, "ok"); }
-    else { desenharPerfis(); status("Perfis salvos." + (r.mensagem ? " " + r.mensagem : ""), "ok"); }
+    if (usar) {
+      await new Promise(ok => setTimeout(ok, 500));
+      await carregar(r.perfis[usar]); status(`Tema de Trabalho na tela. ${r.mensagem || ""}`, "ok");
+    } else { desenharPerfis(); status("Configuração salva." + (r.mensagem ? " " + r.mensagem : ""), "ok"); }
   } catch (e) { status("Erro: " + e.message, "erro"); }
 }
-["#perfAuto", "#perfTemaTrabalho", "#perfTemaJogos", "#perfEntrar", "#perfSair"].forEach(id => $(id).onchange = () => salvarPerfis());
+["#perfAuto", "#perfTemaTrabalho", "#perfTemaJogos", "#perfEntrar", "#perfSair", "#perfBrilhoJogos", "#perfVoltar",
+ "#fecharTurmo"].forEach(id => $(id).onchange = () => salvarPerfis());
 document.querySelectorAll("[data-usar]").forEach(b => b.onclick = () => salvarPerfis(b.dataset.usar));
+$("#gamerBotao").onclick = async () => {
+  const ligar = !(E.gamer && E.gamer.ativo);
+  try {
+    await salvarAtual();
+    status(ligar ? "Ligando o modo gamer…" : "Desligando o modo gamer…");
+    const r = await api("/api/gamer", {ligar});
+    await new Promise(ok => setTimeout(ok, 700));
+    await carregar();
+    status(r.mensagem, "ok");
+  } catch (e) { status("Erro: " + e.message, "erro"); }
+};
+$("#gamerEditar").onclick = async () => {
+  const pasta = $("#perfTemaJogos").value, t = E.temas.find(x => x.pasta === pasta);
+  if (t && !t.editavel) {
+    status(`“${t.nome}” é um tema pronto e não pode ser editado: crie uma cópia em “+ Novo tema” e escolha a cópia aqui.`, "erro");
+    return;
+  }
+  await selecionar_tema(pasta);
+  $("#editor").scrollIntoView({behavior: "smooth", block: "start"});
+  status(`Editando “${t ? t.nome : pasta}”, o tema do modo gamer. As mudanças são salvas sozinhas; “Aplicar na tela” mostra agora.`, "ok");
+};
+$("#instalarPawnio").onclick = async () => {
+  try { const r = await api("/api/pawnio", {}); status(r.mensagem, "ok"); }
+  catch (e) { status("Erro: " + e.message, "erro"); }
+};
 
 function desenharEditor() {
   const ed = !!P;

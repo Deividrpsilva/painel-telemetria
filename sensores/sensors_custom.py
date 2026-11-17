@@ -129,9 +129,13 @@ def _push(history: List[float], value: float, size: int = 40):
 # ---------------- FPS e frametime ----------------
 class _FpsReader:
     """Lê o FPS do jogo em tela cheia pelo sensor 'Fullscreen FPS' que o LibreHardwareMonitor expõe
-    para placas AMD (via driver Adrenalin). Retorna 0 quando nenhum jogo está rodando."""
+    para placas AMD (via driver Adrenalin). Retorna 0 quando nenhum jogo está rodando.
+    O driver às vezes devolve 0 ou nada por um instante no meio do jogo: o último valor bom fica na tela
+    por até SEGURAR s, em vez de piscar "--" (e deixar buraco no gráfico)."""
+    SEGURAR = 3.0
     last_read = 0.0
     fps = 0.0
+    ultimo_bom = 0.0      # instante (monotonic) da última leitura com FPS
 
     @classmethod
     def read(cls) -> float:
@@ -139,21 +143,26 @@ class _FpsReader:
         if now - cls.last_read < 0.5:  # FrameTime e Fps leem o mesmo valor no mesmo ciclo
             return cls.fps
         cls.last_read = now
-        cls.fps = 0.0
+        lido = 0.0
         lhm = _lhm_module()
-        if lhm is None:
-            return cls.fps
-        try:
-            gpu = lhm.Gpu.get_gpu_to_use()
-            if gpu is not None:
-                for sensor in gpu.Sensors:
-                    if sensor.SensorType == lhm.Hardware.SensorType.Factor and "FPS" in str(sensor.Name) \
-                            and sensor.Value is not None and float(sensor.Value) > 0:
-                        cls.fps = float(sensor.Value)
-                        break
-        except Exception as e:
-            _log.debug("FPS indisponível: %s" % e)
-        cls._sessao(now)
+        if lhm is not None:
+            try:
+                gpu = lhm.Gpu.get_gpu_to_use()   # já atualiza a placa (no máximo 2x por segundo)
+                if gpu is not None:
+                    for sensor in gpu.Sensors:
+                        if sensor.SensorType == lhm.Hardware.SensorType.Factor and "FPS" in str(sensor.Name) \
+                                and sensor.Value is not None:
+                            v = float(sensor.Value)
+                            if 0 < v < 2000 and not math.isnan(v):
+                                lido = v
+                                break
+            except Exception as e:
+                _log.debug("FPS indisponível: %s" % e)
+        if lido > 0:
+            cls.fps, cls.ultimo_bom = lido, now
+        elif now - cls.ultimo_bom > cls.SEGURAR:
+            cls.fps = 0.0
+        cls._sessao(now, lido)
         return cls.fps
 
     # ---- média da sessão de jogo ----
@@ -163,11 +172,11 @@ class _FpsReader:
     ultimo_fps = 0.0  # instante (monotonic) da última leitura com FPS
 
     @classmethod
-    def _sessao(cls, now):
-        if cls.fps > 0:
+    def _sessao(cls, now, lido):
+        if lido > 0:   # só leituras de verdade entram na média
             if now - cls.ultimo_fps > 15:
                 cls.soma, cls.amostras = 0.0, 0
-            cls.soma += cls.fps
+            cls.soma += lido
             cls.amostras += 1
             cls.ultimo_fps = now
 
@@ -215,7 +224,8 @@ def _storage_sensors(sensor_type_name: str, name_filter: str = None) -> List[flo
         stype = getattr(lhm.Hardware.SensorType, sensor_type_name)
         for hw in lhm.handle.Hardware:
             if hw.HardwareType == lhm.Hardware.HardwareType.Storage:
-                hw.Update()
+                atualizar = getattr(lhm, "_pulse_atualizar", None)   # uma leitura por vez (montar_pacote.py)
+                atualizar(hw) if atualizar else hw.Update()
                 for sensor in hw.Sensors:
                     if sensor.SensorType == stype and sensor.Value is not None \
                             and (name_filter is None or name_filter in str(sensor.Name)):

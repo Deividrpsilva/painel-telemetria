@@ -206,7 +206,7 @@ $turmo = Get-Process | Where-Object { $_.ProcessName -match "TURMO|TURZX" }
 if ($turmo) {
     Aviso "O TURMO está aberto e ocupa a porta da tela. Ele será fechado."
     $turmo | Stop-Process -Force
-    Aviso "Lembre de desmarcar 'Startup' nas configurações do TURMO para ele não abrir com o Windows."
+    Aviso "Se o TURMO abrir com o Windows, o PULSE fecha ele sozinho (opção 'Fechar o TURMO' na configuração)."
 } else { Ok "TURMO não está rodando." }
 
 # ---------- 3. baixar o programa ----------
@@ -236,6 +236,33 @@ $rodas = Join-Path $Pacote "wheels"      # pacotes que só existem como código-
 if ($LASTEXITCODE -ne 0) { Write-Host "Falha ao instalar dependências." -ForegroundColor Red; exit 1 }
 Ok "Dependências instaladas."
 Gerar-Tema
+
+# ---------- 4b. driver da temperatura da CPU (PawnIO) ----------
+# O LibreHardwareMonitor 0.9.5 lê os sensores da CPU pelo driver PawnIO (o antigo WinRing0 foi aposentado).
+# Sem ele a temperatura da CPU fica vazia. O instalador do PawnIO vai junto no pacote.
+Passo "Verificando o driver PawnIO (temperatura da CPU)"
+function PawnIO-Instalado {
+    (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO") -or
+        [bool](Get-Service -Name PawnIO -ErrorAction SilentlyContinue)
+}
+$setupPawn = Join-Path $Pacote "drivers\PawnIO_setup.exe"
+if (Test-Path $setupPawn) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $Destino "drivers") | Out-Null
+    Copy-Item -Force $setupPawn (Join-Path $Destino "drivers\PawnIO_setup.exe")   # para o botão da configuração
+}
+if (PawnIO-Instalado) {
+    Ok "PawnIO já instalado."
+} elseif ($Simulador) {
+    Ok "Simulador: PawnIO não é necessário."
+} elseif (Test-Path $setupPawn) {
+    try {
+        $pw = Start-Process -FilePath $setupPawn -ArgumentList "-install", "-silent" -Wait -PassThru
+        if (PawnIO-Instalado) { Ok "PawnIO instalado: a temperatura da CPU passa a aparecer." }
+        else { Aviso "O PawnIO não foi instalado (código $($pw.ExitCode)). A temperatura da CPU pode ficar vazia; dá para instalar depois pela janela de configuração." }
+    } catch { Aviso "Não consegui rodar o instalador do PawnIO: $_" }
+} else {
+    Aviso "Instalador do PawnIO não veio no pacote: a temperatura da CPU pode ficar vazia."
+}
 
 # ---------- 5. config ----------
 
