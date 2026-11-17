@@ -1,6 +1,6 @@
 # Gera o instalador e publica a Release.
 #  - Ao enviar uma tag "v*" (ex.: v6.0), ou ao criar uma Release pelo site com uma tag nova.
-#  - Pela aba Actions > "Gerar instalador" > Run workflow: com "versao" preenchida (ex.: v6.1)
+#  - Pela aba Actions > "Gerar instalador" > Run workflow: com "versao" preenchida (ex.: v7.0)
 #    cria a tag e publica a Release; vazia, só gera os arquivos (ficam em Artifacts).
 name: Gerar instalador
 
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       versao:
-        description: "Versão para publicar (ex.: v6.1). Deixe vazio para só gerar os arquivos."
+        description: "Versão para publicar (ex.: v7.0). Deixe vazio para só gerar os arquivos."
         required: false
         default: ""
 
@@ -36,7 +36,7 @@ jobs:
       - name: Guardar os arquivos gerados
         uses: actions/upload-artifact@v4
         with:
-          name: PainelTelemetria
+          name: PULSE
           path: dist/*
 
       - name: Publicar a Release
@@ -45,7 +45,7 @@ jobs:
         with:
           tag_name: ${{ inputs.versao || github.ref_name }}
           target_commitish: ${{ github.sha }}
-          name: Painel de Telemetria ${{ inputs.versao || github.ref_name }}
+          name: PULSE — System Telemetry ${{ inputs.versao || github.ref_name }}
           body_path: .github/release.md
           generate_release_notes: true
           files: dist/*

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Monta o pacote e o instalador do Painel de Telemetria a partir deste repositório.
+"""Monta o pacote e o instalador do PULSE — System Telemetry a partir deste repositório.
 
 O que faz:
   1. baixa o turing-smart-screen-python (só as partes usadas: programa, LibreHardwareMonitor,
@@ -7,8 +7,8 @@ O que faz:
   2. aplica pequenos ajustes no main.py (a bandeja fica com o painel e a troca de tema é feita sem reiniciar);
   3. junta com o código deste repositório (painel/, sensores/, instalador/);
   4. gera em dist/:
-       PainelTelemetria-<versão>.zip   pacote com Instalar.bat (instalação manual)
-       PainelTelemetria-Setup.exe      instalador (precisa do NSIS: "apt install nsis" ou "choco install nsis")
+       PULSE-<versão>.zip   pacote com Instalar.bat (instalação manual)
+       PULSE-Setup.exe      instalador (precisa do NSIS: "apt install nsis" ou "choco install nsis")
 
 Uso (na raiz do repositório):
   python scripts/montar_pacote.py                 tudo
@@ -45,6 +45,12 @@ PADROES = (["/*", "!/tests/", "!/tools/", "!/res/docs/", "!/res/fonts/*/", "!/re
             "/res/themes/default.yaml", "/res/themes/theme_example.yaml"]
            + [f"/res/fonts/{f}/" for f in FONTES] + [f"/res/themes/{t}/" for t in TEMAS])
 
+# Driver que o LibreHardwareMonitor 0.9.5 usa para ler a temperatura da CPU (no lugar do antigo WinRing0).
+# Sem ele a temperatura da CPU fica vazia. Vai junto no pacote e o instalador instala em silêncio.
+PAWNIO_VERSAO = "2.2.0"
+PAWNIO_URL = f"https://github.com/namazso/PawnIO.Setup/releases/download/{PAWNIO_VERSAO}/PawnIO_setup.exe"
+PAWNIO_SHA256 = "1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032"
+
 ARQUIVOS_INSTALADOR = ["instalar.ps1", "desinstalar.ps1", "Instalar.bat", "Instalar (simulador).bat",
                        "Atualizar tema.bat", "LEIAME.txt", "requirements-painel.txt"]
 
@@ -57,6 +63,23 @@ def rodar(*cmd, **kw):
 def versao():
     m = re.search(r'!define VERSAO "([^"]+)"', (RAIZ / "instalador" / "setup.nsi").read_text(encoding="utf-8"))
     return m.group(1) if m else "dev"
+
+
+def baixar_pawnio() -> Path:
+    import hashlib
+    import urllib.request
+    destino = BUILD / f"PawnIO_setup-{PAWNIO_VERSAO}.exe"
+    if not destino.is_file():
+        print(f"Baixando o PawnIO {PAWNIO_VERSAO}...")
+        tmp = destino.with_suffix(".tmp")
+        with urllib.request.urlopen(PAWNIO_URL, timeout=120) as r, open(tmp, "wb") as f:
+            shutil.copyfileobj(r, f)
+        tmp.replace(destino)
+    h = hashlib.sha256(destino.read_bytes()).hexdigest()
+    if h != PAWNIO_SHA256:
+        destino.unlink()
+        sys.exit(f"PawnIO_setup.exe baixado não confere (sha256 {h}); esperado {PAWNIO_SHA256}")
+    return destino
 
 
 def baixar_upstream() -> Path:
@@ -77,12 +100,12 @@ AJUSTES_MAIN = [
     # o ícone da bandeja passa a ser o do painel (painel/iniciar.py)
     ("    try:\n        tray_icon = pystray.Icon(",
      "    try:\n"
-     "        if os.environ.get(\"PAINEL_SEM_BANDEJA\"):  # Painel de Telemetria: o ícone fica com o painel/iniciar.py\n"
-     "            raise RuntimeError(\"bandeja do Painel de Telemetria\")\n"
+     "        if os.environ.get(\"PAINEL_SEM_BANDEJA\"):  # PULSE: o ícone fica com o painel/iniciar.py\n"
+     "            raise RuntimeError(\"bandeja do PULSE\")\n"
      "        tray_icon = pystray.Icon("),
     # troca de tema sem reiniciar: precisa entrar antes do agendador ler os intervalos do tema
     ("    import library.scheduler as scheduler\n",
-     "    try:  # Painel de Telemetria: troca de tema e brilho sem reiniciar (painel/troca_tema.py)\n"
+     "    try:  # PULSE: troca de tema e brilho sem reiniciar (painel/troca_tema.py)\n"
      "        import painel.troca_tema as troca_tema\n"
      "    except Exception as e:\n"
      "        troca_tema = None\n"
@@ -92,20 +115,113 @@ AJUSTES_MAIN = [
      "    scheduler.PingStats(); time.sleep(0.25)\n"
      "    if troca_tema:\n"
      "        troca_tema.iniciar(display)\n"),
+    # conexão com a tela USB que espera, reconecta e explica (painel/tela_usb.py): precisa entrar antes
+    # de qualquer import que abra a porta (library.display abre a porta já no import)
+    ("    from library.log import logger\n",
+     "    from library.log import logger\n"
+     "    try:  # PULSE: conexão com a tela USB que espera, reconecta e explica (painel/tela_usb.py)\n"
+     "        import painel.tela_usb as tela_usb\n"
+     "        tela_usb.instalar()\n"
+     "    except Exception as e:\n"
+     "        tela_usb = None\n"
+     "        logger.exception(\"Conexão robusta com a tela indisponível: %s\", e)\n"
+     "    try:  # PULSE: desenho sem pedidos misturados, sem sobras de texto e só do que mudou (painel/envio_tela.py)\n"
+     "        import painel.envio_tela as envio_tela\n"
+     "        envio_tela.instalar()\n"
+     "    except Exception as e:\n"
+     "        logger.exception(\"Envio otimizado para a tela indisponível: %s\", e)\n"),
+    ("    display.initialize_display()\n",
+     "    display.initialize_display()\n"
+     "    if tela_usb:\n"
+     "        tela_usb.tela_inicializada(display)\n"),
+    ("    # Create all static images\n    display.display_static_images()\n",
+     "    # Create all static images\n"
+     "    if tela_usb:\n"
+     "        tela_usb.envio_iniciado()\n"
+     "    display.display_static_images()\n"),
+    ("    wait_for_empty_queue(10)\n",
+     "    wait_for_empty_queue(10)\n"
+     "    if tela_usb:\n"
+     "        tela_usb.envio_concluido(display, scheduler.is_queue_empty())\n"),
+]
+
+# Sem administrador o LibreHardwareMonitor não lê alguns sensores (temperatura da CPU, por exemplo), e a
+# biblioteca fechava o programa da tela sem aviso: a tela ficava apagada. Agora ela só avisa e segue com
+# o que der para ler. Com administrador (o normal, pela tarefa "PainelTelemetria") nada muda.
+AJUSTES_LHM = [
+    ("if ctypes.windll.shell32.IsUserAnAdmin() == 0:\n"
+     "    logger.error(\n"
+     "        \"Program is not running as administrator. Please run with admin rights or choose another HW_SENSORS option in \"\n"
+     "        \"config.yaml\")\n"
+     "    try:\n"
+     "        sys.exit(0)\n"
+     "    except:\n"
+     "        os._exit(0)\n",
+     "if ctypes.windll.shell32.IsUserAnAdmin() == 0:\n"
+     "    # PULSE: sem administrador a tela continua; só as leituras que exigem admin ficam vazias\n"
+     "    logger.warning(\n"
+     "        \"Sem permissão de administrador: a tela continua, mas leituras como a temperatura da CPU podem ficar \"\n"
+     "        \"vazias. Abra o PULSE pelo atalho ou reinicie o PC (a tarefa 'PainelTelemetria' roda como administrador).\")\n"),
+    # Com duas placas AMD (ex.: Radeon integrada do Ryzen + RX dedicada) a biblioteca usava a última que tivesse
+    # sensor de carga, às vezes a integrada. O PULSE escolhe a dedicada ou a escolhida na configuração
+    # (painel/placa_video.py); se algo falhar, segue a lógica original.
+    ("def get_gpu_name() -> str:\n",
+     "def get_gpu_name() -> str:\n"
+     "    try:  # PULSE: placa escolhida na configuração ou a dedicada (painel/placa_video.py)\n"
+     "        import painel.placa_video as placa_video\n"
+     "        return placa_video.escolher(sys.modules[__name__])\n"
+     "    except Exception as e:\n"
+     "        logger.warning(\"Escolha da placa de vídeo do PULSE falhou (%s); usando a da biblioteca\" % e)\n"),
+    # Várias threads (CPU, GPU, sensores do PULSE) pediam a mesma peça ao mesmo tempo, e o LibreHardwareMonitor
+    # não aceita leituras simultâneas: às vezes o programa da tela caía (NullReferenceException) e, num jogo, as
+    # leituras repetidas da placa de vídeo atrasavam o FPS. Agora é uma leitura por vez e no máximo uma a cada
+    # 0,5 s por peça (quem pede logo depois usa a mesma leitura).
+    ("def get_hw_and_update(hwtype: Hardware.HardwareType, name: str = None) -> Hardware.Hardware:\n",
+     "import threading as _pulse_threading\n"
+     "import time as _pulse_time\n"
+     "_pulse_trava = _pulse_threading.RLock()\n"
+     "_pulse_lido = {}\n"
+     "\n"
+     "\n"
+     "def _pulse_atualizar(hardware):\n"
+     "    \"\"\"PULSE: uma leitura por vez e no máximo uma a cada 0,5 s por peça.\"\"\"\n"
+     "    with _pulse_trava:\n"
+     "        try:\n"
+     "            chave = str(hardware.Identifier)\n"
+     "        except Exception:\n"
+     "            chave = str(hardware.HardwareType) + str(hardware.Name)\n"
+     "        if _pulse_time.monotonic() - _pulse_lido.get(chave, -1.0) >= 0.5:\n"
+     "            hardware.Update()\n"
+     "            _pulse_lido[chave] = _pulse_time.monotonic()\n"
+     "\n"
+     "\n"
+     "def get_hw_and_update(hwtype: Hardware.HardwareType, name: str = None) -> Hardware.Hardware:\n"),
+    ("            if (name and hardware.Name == name) or name is None:\n"
+     "                hardware.Update()\n",
+     "            if (name and hardware.Name == name) or name is None:\n"
+     "                _pulse_atualizar(hardware)\n"),
+    ("hardware.HardwareType == Hardware.HardwareType.Network and hardware.Name == if_name:\n"
+     "            hardware.Update()\n",
+     "hardware.HardwareType == Hardware.HardwareType.Network and hardware.Name == if_name:\n"
+     "            _pulse_atualizar(hardware)\n"),
 ]
 
 
-def ajustar_main(app: Path):
-    """Pequenos ajustes no main.py original (ver AJUSTES_MAIN)."""
-    arq = app / "main.py"
+def _ajustar(arq: Path, ajustes):
     texto = arq.read_text(encoding="utf-8")
-    for antes, depois in AJUSTES_MAIN:
+    for antes, depois in ajustes:
         if depois in texto:
             continue
         if texto.count(antes) != 1:
-            sys.exit("main.py do turing-smart-screen-python mudou: revise AJUSTES_MAIN em scripts/montar_pacote.py")
+            sys.exit(f"{arq.name} do turing-smart-screen-python mudou: revise os ajustes em scripts/montar_pacote.py")
         texto = texto.replace(antes, depois, 1)
     arq.write_text(texto, encoding="utf-8", newline="")
+
+
+def ajustar_main(app: Path):
+    """Pequenos ajustes no código original (ver AJUSTES_MAIN e AJUSTES_LHM)."""
+    _ajustar(app / "main.py", AJUSTES_MAIN)
+    _ajustar(app / "library" / "sensors" / "sensors_librehardwaremonitor.py", AJUSTES_LHM)
 
 
 def montar_pacote(upstream: Path) -> Path:
@@ -117,17 +233,20 @@ def montar_pacote(upstream: Path) -> Path:
     shutil.copytree(upstream, app, ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*_preview.png"))
     ajustar_main(app)
     shutil.copytree(RAIZ / "painel", app / "painel", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    (app / "painel" / "versao.txt").write_text(versao(), encoding="utf-8")   # mostrada na tela Sobre
     shutil.copy2(RAIZ / "sensores" / "sensors_custom.py", app / "library" / "sensors" / "sensors_custom.py")
     shutil.copy2(RAIZ / "sensores" / "sensors_custom.py", pacote / "sensors_custom.py")
     for nome in ARQUIVOS_INSTALADOR:
         shutil.copy2(RAIZ / "instalador" / nome, pacote / nome)
     shutil.copytree(RAIZ / "instalador" / "wheels", pacote / "wheels")
+    (pacote / "drivers").mkdir()
+    shutil.copy2(baixar_pawnio(), pacote / "drivers" / "PawnIO_setup.exe")
     return pacote
 
 
 def gerar_zip(pacote: Path, ver: str) -> Path:
     DIST.mkdir(exist_ok=True)
-    nome = f"PainelTelemetria-{ver}"
+    nome = f"PULSE-{ver}"
     arq = DIST / f"{nome}.zip"
     with zipfile.ZipFile(arq, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(pacote.rglob("*")):
@@ -142,17 +261,19 @@ def gerar_setup(pacote: Path) -> Path:
     if not makensis:
         sys.exit("makensis não encontrado. Instale o NSIS (Linux: apt install nsis | Windows: choco install nsis)")
     shutil.copy2(RAIZ / "instalador" / "setup.nsi", BUILD / "setup.nsi")
+    for bmp in ("pulse_instalador_lateral.bmp", "pulse_instalador_cabecalho.bmp"):
+        shutil.copy2(RAIZ / "instalador" / bmp, BUILD / bmp)
     rodar(makensis, "-INPUTCHARSET", "UTF8", "-V2", "setup.nsi", cwd=BUILD)
     DIST.mkdir(exist_ok=True)
-    destino = DIST / "PainelTelemetria-Setup.exe"
-    shutil.move(BUILD / "PainelTelemetria-Setup.exe", destino)
+    destino = DIST / "PULSE-Setup.exe"
+    shutil.move(BUILD / "PULSE-Setup.exe", destino)
     print(f"Instalador: {destino} ({destino.stat().st_size / 1e6:.1f} MB)")
     return destino
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--sem-setup", action="store_true", help="não gera o PainelTelemetria-Setup.exe")
+    ap.add_argument("--sem-setup", action="store_true", help="não gera o PULSE-Setup.exe")
     ap.add_argument("--upstream", type=Path, help="pasta com o turing-smart-screen-python já baixado")
     a = ap.parse_args()
     BUILD.mkdir(exist_ok=True)

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>PULSE</title>
+  <defs>
+    <linearGradient id="gFundo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#162234"/><stop offset="1" stop-color="#0B111A"/>
+    </linearGradient>
+  </defs>
+  <rect x="10.00" y="10.00" width="236.00" height="236.00" rx="52.00" fill="url(#gFundo)" stroke="#00D1E8" stroke-opacity="1.0" stroke-width="16.00"/>
+  <path d="M42.00 138.00 L84.00 138.00 L110.00 54.00 L146.00 204.00 L170.00 138.00 L214.00 138.00" fill="none" stroke="#00E5FF" stroke-width="30.00" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

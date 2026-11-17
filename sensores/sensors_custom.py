@@ -102,11 +102,12 @@ class ExampleCustomTextOnlyData(CustomDataSource):
 
 
 # =====================================================================================
-# PainelTelemetria: sensores próprios (volume, FPS, frametime, SSD)
+# PULSE — System Telemetry: sensores próprios (volume, FPS, frametime, SSD)
 # =====================================================================================
 # Obs.: o System Monitor cria uma instância nova de cada classe a cada atualização,
 # por isso o histórico fica em atributos de classe.
 import sys
+import threading
 import time
 import logging
 
@@ -128,9 +129,13 @@ def _push(history: List[float], value: float, size: int = 40):
 # ---------------- FPS e frametime ----------------
 class _FpsReader:
     """Lê o FPS do jogo em tela cheia pelo sensor 'Fullscreen FPS' que o LibreHardwareMonitor expõe
-    para placas AMD (via driver Adrenalin). Retorna 0 quando nenhum jogo está rodando."""
+    para placas AMD (via driver Adrenalin). Retorna 0 quando nenhum jogo está rodando.
+    O driver às vezes devolve 0 ou nada por um instante no meio do jogo: o último valor bom fica na tela
+    por até SEGURAR s, em vez de piscar "--" (e deixar buraco no gráfico)."""
+    SEGURAR = 3.0
     last_read = 0.0
     fps = 0.0
+    ultimo_bom = 0.0      # instante (monotonic) da última leitura com FPS
 
     @classmethod
     def read(cls) -> float:
@@ -138,21 +143,26 @@ class _FpsReader:
         if now - cls.last_read < 0.5:  # FrameTime e Fps leem o mesmo valor no mesmo ciclo
             return cls.fps
         cls.last_read = now
-        cls.fps = 0.0
+        lido = 0.0
         lhm = _lhm_module()
-        if lhm is None:
-            return cls.fps
-        try:
-            gpu = lhm.Gpu.get_gpu_to_use()
-            if gpu is not None:
-                for sensor in gpu.Sensors:
-                    if sensor.SensorType == lhm.Hardware.SensorType.Factor and "FPS" in str(sensor.Name) \
-                            and sensor.Value is not None and float(sensor.Value) > 0:
-                        cls.fps = float(sensor.Value)
-                        break
-        except Exception as e:
-            _log.debug("FPS indisponível: %s" % e)
-        cls._sessao(now)
+        if lhm is not None:
+            try:
+                gpu = lhm.Gpu.get_gpu_to_use()   # já atualiza a placa (no máximo 2x por segundo)
+                if gpu is not None:
+                    for sensor in gpu.Sensors:
+                        if sensor.SensorType == lhm.Hardware.SensorType.Factor and "FPS" in str(sensor.Name) \
+                                and sensor.Value is not None:
+                            v = float(sensor.Value)
+                            if 0 < v < 2000 and not math.isnan(v):
+                                lido = v
+                                break
+            except Exception as e:
+                _log.debug("FPS indisponível: %s" % e)
+        if lido > 0:
+            cls.fps, cls.ultimo_bom = lido, now
+        elif now - cls.ultimo_bom > cls.SEGURAR:
+            cls.fps = 0.0
+        cls._sessao(now, lido)
         return cls.fps
 
     # ---- média da sessão de jogo ----
@@ -162,11 +172,11 @@ class _FpsReader:
     ultimo_fps = 0.0  # instante (monotonic) da última leitura com FPS
 
     @classmethod
-    def _sessao(cls, now):
-        if cls.fps > 0:
+    def _sessao(cls, now, lido):
+        if lido > 0:   # só leituras de verdade entram na média
             if now - cls.ultimo_fps > 15:
                 cls.soma, cls.amostras = 0.0, 0
-            cls.soma += cls.fps
+            cls.soma += lido
             cls.amostras += 1
             cls.ultimo_fps = now
 
@@ -214,7 +224,8 @@ def _storage_sensors(sensor_type_name: str, name_filter: str = None) -> List[flo
         stype = getattr(lhm.Hardware.SensorType, sensor_type_name)
         for hw in lhm.handle.Hardware:
             if hw.HardwareType == lhm.Hardware.HardwareType.Storage:
-                hw.Update()
+                atualizar = getattr(lhm, "_pulse_atualizar", None)   # uma leitura por vez (montar_pacote.py)
+                atualizar(hw) if atualizar else hw.Update()
                 for sensor in hw.Sensors:
                     if sensor.SensorType == stype and sensor.Value is not None \
                             and (name_filter is None or name_filter in str(sensor.Name)):
@@ -285,35 +296,88 @@ def _psutil_disk_busy() -> float:
 
 
 # ---------------- Volume do sistema ----------------
+# Uma thread só cuida do áudio: cria os objetos COM uma vez, reaproveita e lê o volume a cada 0,5 s.
+# Antes cada leitura (1 por segundo) criava objetos novos, e o microfone passava por ctypes.cast, que não conta
+# a referência do objeto COM: o mesmo objeto era liberado duas vezes e, depois de 1 ou 2 minutos, o main.py caía
+# com 0xC0000005 em _ctypes.pyd ("COM method call without VTable").
 class _VolumeReader:
-    endpoint = None
+    INTERVALO = 0.5   # leitura do volume
+    RENOVAR = 5.0     # pega de novo o dispositivo padrão (troca de fone/caixa/microfone)
+    ESQUECER = 30.0   # tema que não mostra mais o volume: solta o dispositivo
+    valores = {False: (math.nan, False), True: (math.nan, False)}
+    pedido = {False: 0.0, True: 0.0}
+    _thread = None
+    _trava = threading.Lock()
+    _pronto = threading.Event()
 
     @classmethod
     def get(cls, microfone: bool = False):
         """Retorna (volume 0-100, mudo) ou (nan, False) se não for possível ler."""
         if platform.system() != "Windows":
             return math.nan, False
+        microfone = bool(microfone)
+        primeiro = cls.pedido[microfone] == 0.0
+        cls.pedido[microfone] = time.monotonic()
+        if cls._thread is None:
+            with cls._trava:
+                if cls._thread is None:
+                    cls._thread = threading.Thread(target=cls._laco, name="PULSE_Audio", daemon=True)
+                    cls._thread.start()
+        if primeiro and cls._thread.is_alive():
+            cls._pronto.clear()
+            cls._pronto.wait(1.0)  # primeira leitura: espera a thread para não mostrar "--" à toa
+        return cls.valores[microfone]
+
+    @classmethod
+    def _laco(cls):
         try:
             import comtypes
             try:
-                comtypes.CoInitialize()  # cada thread do agendador precisa inicializar o COM
+                comtypes.CoInitialize()
             except OSError:
                 pass
-            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-            speakers = AudioUtilities.GetMicrophone() if microfone else AudioUtilities.GetSpeakers()
-            if speakers is None:
-                return math.nan, False
-            if hasattr(speakers, "EndpointVolume"):  # pycaw >= 20240316
-                endpoint = speakers.EndpointVolume
-            else:
-                from ctypes import cast, POINTER
-                from comtypes import CLSCTX_ALL
-                iface = speakers.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-                endpoint = cast(iface, POINTER(IAudioEndpointVolume))
-            return endpoint.GetMasterVolumeLevelScalar() * 100.0, bool(endpoint.GetMute())
+            from pycaw.pycaw import IAudioEndpointVolume, IMMDeviceEnumerator
+            from pycaw.constants import CLSID_MMDeviceEnumerator, EDataFlow, ERole
         except Exception as e:
-            _log.debug("Volume indisponível: %s" % e)
-            return math.nan, False
+            _log.warning("Volume indisponível: %s" % e)
+            cls._pronto.set()
+            return
+        fluxo = {False: EDataFlow.eRender.value, True: EDataFlow.eCapture.value}
+        enumerador = None
+        volume = {False: None, True: None}     # IAudioEndpointVolume de cada um, criado e solto só aqui
+        renovado = {False: -1e9, True: -1e9}
+        falhou = {False: False, True: False}
+        while True:
+            agora = time.monotonic()
+            for mic in (False, True):
+                if agora - cls.pedido[mic] > cls.ESQUECER:
+                    volume[mic] = None
+                    continue
+                try:
+                    if agora - renovado[mic] >= cls.RENOVAR:
+                        renovado[mic] = agora
+                        if enumerador is None:
+                            enumerador = comtypes.CoCreateInstance(CLSID_MMDeviceEnumerator, IMMDeviceEnumerator,
+                                                                   comtypes.CLSCTX_INPROC_SERVER)
+                        volume[mic] = None
+                        dispositivo = enumerador.GetDefaultAudioEndpoint(fluxo[mic], ERole.eMultimedia.value)
+                        iface = dispositivo.Activate(IAudioEndpointVolume._iid_, comtypes.CLSCTX_ALL, None)
+                        volume[mic] = iface.QueryInterface(IAudioEndpointVolume)  # conta a referência certo
+                        del iface, dispositivo
+                    if volume[mic] is None:
+                        cls.valores[mic] = (math.nan, False)
+                        continue
+                    cls.valores[mic] = (volume[mic].GetMasterVolumeLevelScalar() * 100.0, bool(volume[mic].GetMute()))
+                    falhou[mic] = False
+                except Exception as e:
+                    # sem dispositivo (ex.: nenhum microfone ligado) ou ele sumiu: tenta de novo daqui a RENOVAR s
+                    volume[mic] = None
+                    cls.valores[mic] = (math.nan, False)
+                    if not falhou[mic]:
+                        _log.debug("%s indisponível: %s" % ("Microfone" if mic else "Volume", e))
+                    falhou[mic] = True
+            cls._pronto.set()
+            time.sleep(cls.INTERVALO)
 
 
 class Volume(CustomDataSource):
