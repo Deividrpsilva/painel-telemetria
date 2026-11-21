@@ -11,3 +11,6 @@ instalador/LEIAME.txt text eol=crlf
 *.png   binary
 *.ico   binary
 *.whl   binary
+*.bmp   binary
+*.svg   text eol=lf
+*.js    text eol=lf

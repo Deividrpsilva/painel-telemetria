@@ -1,17 +1,20 @@
-# Painel de Telemetria - iniciador e ícone da bandeja
+# PULSE — System Telemetry - iniciador e ícone da bandeja
 #
 # É o que a tarefa "PainelTelemetria" abre ao entrar no Windows (como administrador, exigido
 # pelo LibreHardwareMonitor). Ele:
 #   1. mantém o programa da tela (main.py) rodando e o reabre se ele fechar;
-#   2. troca o tema sozinho conforme o perfil (C:\PainelTelemetria\perfis.json):
-#      - algum programa em TELA CHEIA (jogo) por alguns segundos  -> tema do perfil "Jogos";
-#      - saiu da tela cheia por alguns segundos                   -> tema do perfil "Trabalho".
-#      A troca só acontece quando muda de situação, então um tema escolhido à mão
-#      fica na tela até o próximo jogo abrir ou fechar;
+#   2. liga e desliga o MODO GAMER (configuração em C:\PainelTelemetria\perfis.json):
+#      - algum programa em TELA CHEIA (jogo) por alguns segundos  -> tema do modo gamer (e o brilho dele,
+#        se escolhido);
+#      - saiu da tela cheia por alguns segundos                   -> volta ao tema (e brilho) que estava
+#        antes do jogo, ou ao tema de Trabalho, conforme a opção.
+#      Também pela bandeja ("Modo gamer"). O estado fica em modo_gamer.json, então sobrevive a reinícios;
+#   2b. fecha o TURMO quando ele abre (ele pega a porta da tela no boot), se a opção estiver ligada;
 #   3. mostra o ícone na bandeja (perto do relógio, em "mostrar ícones ocultos") com atalhos
 #      para abrir a configuração, trocar de perfil, mudar o brilho, reiniciar e sair;
-#   4. recebe comandos em 127.0.0.1:5681 ("abrir", "aplicar", "reiniciar", "perfis", "sair", "ping")
-#      da janela de configuração e do atalho "Painel de Telemetria".
+#   4. recebe comandos em 127.0.0.1:5681 ("abrir", "aplicar", "reiniciar", "perfis", "jogos", "trabalho",
+#      "gamer", "sair_gamer", "sair", "ping")
+#      da janela de configuração e do atalho "PULSE".
 #   Trocar tema ou brilho não reinicia o main.py: o pedido vai para o painel/troca_tema.py, que roda
 #   dentro dele (127.0.0.1:5682) e só redesenha a tela. Girar a tela 180° ainda reinicia.
 # Rode a partir da pasta app:  pythonw painel/iniciar.py [--abrir]
@@ -19,6 +22,7 @@ import json
 import logging
 import os
 import platform
+import re
 import socket
 import subprocess
 import sys
@@ -38,13 +42,23 @@ PORTA_CONFIG = 5680              # janela de configuração (painel/config_ui.py
 PORTA_MAIN = 5682                # main.py: troca de tema/brilho sem reiniciar (painel/troca_tema.py)
 SIMULAR_JOGO = DESTINO / "simular_jogo.txt"   # para testes: se existir, finge que há um jogo em tela cheia
 PEDIDO_REINICIO = DESTINO / ".reiniciar"      # alternativa ao comando "reiniciar"
-ICONE_PNG = PAINEL / "icone.png"
+DESLIGANDO = DESTINO / ".desligando"          # o main.py grava ao receber o aviso de desligamento (painel/desligamento.py)
+SAIDA_MAIN = DESTINO / "main_saida.log"       # o que o main.py escreve fora do log (erros de import, tracebacks)
+LOG_MAIN = APP / "log.log"                    # log da biblioteca da tela
+ICONE_PNG = PAINEL / "pulse_tray.png"
 WINDOWS = platform.system() == "Windows"
 
-PERFIS_PADRAO = {"auto": True, "trabalho": "Meu_Trabalho", "jogos": "Meu_Jogos", "entrar_s": 5, "sair_s": 20}
+MODO_GAMER = DESTINO / "modo_gamer.json"     # {"ativo", "origem": auto|manual, "antes": {"tema", "brilho"}}
+
+# jogos_brilho: brilho no modo gamer (None = não muda); voltar_anterior: ao sair do modo gamer volta ao tema que
+# estava antes (False = vai para o tema de Trabalho); fechar_turmo: fecha o TURMO quando ele abrir
+PERFIS_PADRAO = {"auto": True, "trabalho": "Meu_Trabalho", "jogos": "Meu_Jogos", "entrar_s": 3, "sair_s": 5,
+                 "jogos_brilho": None, "voltar_anterior": True, "fechar_turmo": True, "versao": 2}
+TURMO = re.compile(r"^(turmo|turzx)", re.I)   # nomes de processo do TURMO (ex.: TURMO.exe)
 
 sys.path.insert(0, str(PAINEL))
 os.chdir(APP)
+import tela_usb  # noqa: E402  (só as funções de estado: tela.json)
 
 log = logging.getLogger("iniciar")
 
@@ -62,12 +76,60 @@ def _configurar_log():
 def ler_perfis():
     p = dict(PERFIS_PADRAO)
     try:
-        p.update(json.loads(PERFIS.read_text(encoding="utf-8")))
+        lido = json.loads(PERFIS.read_text(encoding="utf-8"))
+        if not lido.get("versao"):
+            # até a 7.0 o padrão era entrar após 5 s e voltar após 20 s (lento demais): quem não mudou ganha o novo
+            if lido.get("entrar_s") == 5:
+                lido["entrar_s"] = PERFIS_PADRAO["entrar_s"]
+            if lido.get("sair_s") == 20:
+                lido["sair_s"] = PERFIS_PADRAO["sair_s"]
+            lido["versao"] = PERFIS_PADRAO["versao"]
+        p.update(lido)
     except FileNotFoundError:
         pass
     except Exception as e:
         log.info("perfis.json inválido: %s", e)
     return p
+
+
+def ler_modo_gamer():
+    try:
+        d = json.loads(MODO_GAMER.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {"ativo": False}
+    except Exception:
+        return {"ativo": False}
+
+
+def gravar_modo_gamer(d):
+    try:
+        tmp = MODO_GAMER.with_name(MODO_GAMER.name + ".tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+        os.replace(tmp, MODO_GAMER)
+    except OSError as e:
+        log.info("Não consegui gravar o modo_gamer.json: %s", e)
+
+
+def tema_existe(pasta):
+    return bool(pasta) and (APP / "res" / "themes" / pasta / "theme.yaml").is_file()
+
+
+def pawnio_instalado():
+    """Driver que o LibreHardwareMonitor 0.9.5 usa para ler a temperatura da CPU. None fora do Windows."""
+    if not WINDOWS:
+        return None
+    try:
+        import winreg
+        winreg.CloseKey(winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                                       r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO"))
+        return True
+    except OSError:
+        pass
+    try:
+        r = subprocess.run(["sc", "query", "PawnIO"], capture_output=True, text=True, timeout=10,
+                           creationflags=0x08000000)
+        return r.returncode == 0
+    except Exception:
+        return False
 
 
 def gravar_perfis(p):
@@ -193,12 +255,114 @@ def nome_do_tema(pasta):
         return pasta
 
 
-def abrir_main():
-    env = dict(os.environ, PAINEL_SEM_BANDEJA="1")   # o ícone da bandeja é o deste iniciador
+def windows_desligando():
+    """True se o Windows está desligando, reiniciando ou saindo da conta: aí o main.py NÃO pode ser reaberto,
+    senão ele reinicia a tela e ela fica acesa com o PC desligado."""
+    try:
+        if time.time() - DESLIGANDO.stat().st_mtime < 300:
+            return True
+    except OSError:
+        pass
     if WINDOWS:
-        return subprocess.Popen([_pythonw(), "main.py"], cwd=str(APP), env=env,
-                                creationflags=0x08000000)  # CREATE_NO_WINDOW
-    return subprocess.Popen([sys.executable, "main.py"], cwd=str(APP), env=env)
+        try:
+            import ctypes
+            return bool(ctypes.windll.user32.GetSystemMetrics(0x2000))   # SM_SHUTTINGDOWN
+        except Exception:
+            pass
+    return False
+
+
+def abrir_main():
+    # o ícone da bandeja é o deste iniciador; a saída do main.py vai para main_saida.log (no pythonw ela sumia)
+    env = dict(os.environ, PAINEL_SEM_BANDEJA="1", PULSE_SAIDA="1", PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
+    try:
+        saida = open(SAIDA_MAIN, "w", encoding="utf-8")
+        saida.write(f"--- main.py aberto em {time.strftime('%d/%m %H:%M:%S')}\n")
+        saida.flush()
+    except OSError:
+        saida = subprocess.DEVNULL
+    try:
+        if WINDOWS:
+            return subprocess.Popen([_pythonw(), "main.py"], cwd=str(APP), env=env, stdout=saida,
+                                    stderr=subprocess.STDOUT, creationflags=0x08000000)  # CREATE_NO_WINDOW
+        return subprocess.Popen([sys.executable, "main.py"], cwd=str(APP), env=env, stdout=saida,
+                                stderr=subprocess.STDOUT)
+    finally:
+        if saida is not subprocess.DEVNULL:
+            saida.close()
+
+
+def _tamanho(arq):
+    try:
+        return arq.stat().st_size
+    except OSError:
+        return 0
+
+
+def _ler_trecho(arq, desde=0, maximo=64_000):
+    try:
+        with open(arq, "rb") as fh:
+            tam = fh.seek(0, 2)
+            if desde > tam:              # o log girou: lê do começo
+                desde = 0
+            fh.seek(max(desde, tam - maximo))
+            dados = fh.read()
+    except OSError:
+        return []
+    try:
+        texto = dados.decode("utf-8")
+    except UnicodeDecodeError:
+        texto = dados.decode("cp1252" if WINDOWS else "latin-1", "replace")
+    return [linha.strip() for linha in texto.splitlines() if linha.strip()]
+
+
+# códigos de saída do Windows quando o processo cai sem passar pelo Python (falha em código nativo)
+FALHAS_WINDOWS = {
+    0xC0000005: "falha de acesso à memória em código nativo",
+    0xC0000409: "falha grave em código nativo",
+    0xC00000FD: "estouro de pilha",
+    0xC0000374: "memória corrompida em código nativo",
+    0xE0434352: "erro não tratado no .NET (LibreHardwareMonitor)",
+    0xC000013A: "encerrado pelo Windows",
+}
+
+
+def descrever_codigo(codigo):
+    if codigo is None:
+        return "?"
+    c = int(codigo) & 0xFFFFFFFF
+    if c >= 0xC0000000:
+        return f"0x{c:08X}" + (f", {FALHAS_WINDOWS[c]}" if c in FALHAS_WINDOWS else "")
+    return str(codigo)
+
+
+def motivo_saida(log_desde, codigo=None):
+    """Por que o main.py fechou: o último erro do log.log desta execução ou a última linha de um traceback.
+    Sem erro registrado, diz isso e mostra a última mensagem do log só como contexto (um aviso qualquer,
+    como o de várias GPUs, não é a causa)."""
+    linhas = _ler_trecho(LOG_MAIN, log_desde)
+    saida = [x for x in _ler_trecho(SAIDA_MAIN) if not x.startswith("---")]
+
+    def ultima(nivel):
+        achadas = [x for x in linhas if nivel in x and "Too fast" not in x]
+        return achadas[-1].split(nivel, 1)[1].strip()[:300] if achadas else ""
+
+    erro_saida = next((x for x in reversed(saida) if "Error" in x or "error" in x or "Exception" in x), "")
+    erro = ultima("[CRITICAL]") or ultima("[ERROR]") or erro_saida[:300]
+    if erro:
+        return erro
+    contexto = ""
+    for x in reversed(linhas):
+        m = re.search(r"\[(DEBUG|INFO|WARNING)\]\s*(.*)", x)
+        if m and "Too fast" not in x:
+            contexto = m.group(2).strip()[:200]
+            break
+    c = None if codigo is None else int(codigo) & 0xFFFFFFFF
+    if c is not None and c >= 0xC0000000:
+        texto = f"O programa da tela travou ({descrever_codigo(codigo)})"
+    else:
+        texto = f"O programa da tela fechou sem registrar erro (código {descrever_codigo(codigo)})"
+    return texto + (f". Última mensagem do log: {contexto}" if contexto else "")
 
 
 def config_aberta():
@@ -233,6 +397,7 @@ class Painel:
         self.proc = None
         self.falhas = 0
         self.proxima_abertura = 0.0
+        self.desligando = False          # Windows desligando (painel/desligamento.py): não reabre o main.py
         self.inicio_proc = 0.0
         self.em_jogo = False             # situação confirmada
         self.desde = None                # quando a situação começou a mudar
@@ -242,13 +407,24 @@ class Painel:
         self.brilho = None
         self.icone = None
         self.reverso_em_uso = None       # DISPLAY_REVERSE com que o main.py abriu (mudar exige reiniciar)
+        self.log_main_desde = 0          # tamanho do log.log quando o main.py abriu (para achar o erro desta vez)
+        self.tela = ""                   # "Tela: funcionando (COM5)" (tela.json), mostrado na bandeja
         self.reinicio = threading.Event()
         self.fim = threading.Event()
         self.trava = threading.Lock()
+        self.trava_gamer = threading.RLock()
+        self.gamer = ler_modo_gamer()
+        # ligado sozinho por um jogo antes de reiniciar: se o jogo já fechou, desliga depois de "sair_s"
+        self.em_jogo = bool(self.gamer.get("ativo")) and self.gamer.get("origem") == "auto"
+        self.turmo_visto = set()         # PIDs do TURMO já tratados (para não repetir o log)
+        self.turmo_conferido = 0.0
+        self.pawnio = pawnio_instalado()
+        self.pawnio_conferido = time.monotonic()
 
     # ---------- estado (lido do disco a cada 3 s) ----------
     def atualizar_estado(self):
-        antes = (self.tema, self.brilho, self.perfis.get("auto"), self.perfis.get("trabalho"), self.perfis.get("jogos"))
+        antes = (self.tema, self.brilho, self.perfis.get("auto"), self.perfis.get("trabalho"), self.perfis.get("jogos"),
+                 self.tela)
         self.perfis = ler_perfis()
         try:
             cfg = ler_config()
@@ -257,7 +433,9 @@ class Painel:
         except Exception as e:
             log.info("config.yaml ilegível: %s", e)
         self.lido = time.monotonic()
-        depois = (self.tema, self.brilho, self.perfis.get("auto"), self.perfis.get("trabalho"), self.perfis.get("jogos"))
+        self.tela = tela_usb.resumo()
+        depois = (self.tema, self.brilho, self.perfis.get("auto"), self.perfis.get("trabalho"), self.perfis.get("jogos"),
+                  self.tela)
         if depois != antes:
             self.atualizar_icone()
 
@@ -266,11 +444,16 @@ class Painel:
             return
         try:
             rotulo = "Tema"
-            if self.tema == self.perfis.get("jogos"):
+            if self.gamer.get("ativo"):
+                rotulo = "Modo gamer"
+            elif self.tema == self.perfis.get("jogos"):
                 rotulo = "Perfil Jogos"
             elif self.tema == self.perfis.get("trabalho"):
                 rotulo = "Perfil Trabalho"
-            self.icone.title = f"Painel de Telemetria\n{rotulo}: {nome_do_tema(self.tema)}"[:127]
+            titulo = f"PULSE — System Telemetry\n{rotulo}: {nome_do_tema(self.tema)}"
+            if self.tela:
+                titulo += f"\n{self.tela}"
+            self.icone.title = titulo[:127]
             self.icone.update_menu()
         except Exception as e:
             log.info("Falha ao atualizar o ícone: %s", e)
@@ -280,11 +463,112 @@ class Painel:
         self.reinicio.set()
 
     def usar_perfil(self, perfil):
+        if perfil == "jogos":
+            return self.entrar_gamer("manual")
         alvo = self.perfis.get(perfil)
-        if not alvo or not (APP / "res" / "themes" / alvo / "theme.yaml").is_file():
+        if not tema_existe(alvo):
             log.info("Tema do perfil %s não encontrado: %s", perfil, alvo)
             return
+        with self.trava_gamer:
+            if self.gamer.get("ativo"):      # escolheu o Trabalho à mão: o modo gamer acaba aqui
+                self._encerrar_gamer("tema de Trabalho escolhido", restaurar_brilho=True)
         self.trocar_tema(alvo)
+
+    # ---------- modo gamer ----------
+    def entrar_gamer(self, origem):
+        """origem: "auto" (jogo em tela cheia) ou "manual" (bandeja/configuração)."""
+        with self.trava_gamer:
+            self.perfis = ler_perfis()
+            alvo = self.perfis.get("jogos")
+            if not tema_existe(alvo):
+                log.info("Tema do modo gamer não encontrado: %s", alvo)
+                return
+            try:
+                cfg = ler_config()
+                tema = str(cfg["config"].get("THEME", ""))
+                brilho = int(cfg["display"].get("BRIGHTNESS", 20))
+            except Exception:
+                tema, brilho = self.tema, self.brilho
+            if not self.gamer.get("ativo"):
+                self.gamer = {"ativo": True, "origem": origem, "desde": time.time(),
+                              "antes": {"tema": tema, "brilho": brilho}}
+            elif origem == "manual":
+                self.gamer["origem"] = "manual"   # ligado à mão: só desliga à mão
+            gravar_modo_gamer(self.gamer)
+            log.info("Modo gamer ligado (%s) -> tema %s", "jogo em tela cheia" if origem == "auto" else "à mão",
+                     alvo)
+            if tema != alvo:
+                self.trocar_tema(alvo)
+            b = self.perfis.get("jogos_brilho")
+            if isinstance(b, int) and not isinstance(b, bool) and b != brilho:
+                self.mudar_brilho(b)
+            self.atualizar_estado()
+            self.atualizar_icone()
+
+    def sair_gamer(self, origem):
+        with self.trava_gamer:
+            if not self.gamer.get("ativo"):
+                return
+            self.perfis = ler_perfis()
+            antes = self.gamer.get("antes") or {}
+            jogos = self.perfis.get("jogos")
+            alvo = None
+            if self.perfis.get("voltar_anterior", True):
+                t = antes.get("tema")
+                if t and t != jogos and tema_existe(t):
+                    alvo = t
+            if not alvo:
+                alvo = self.perfis.get("trabalho")
+            self._encerrar_gamer("saiu do jogo" if origem == "auto" else "à mão", restaurar_brilho=True,
+                                 alvo=alvo)
+            if tema_existe(alvo) and tema_atual() != alvo:
+                self.trocar_tema(alvo)
+            self.atualizar_estado()
+            self.atualizar_icone()
+
+    def _encerrar_gamer(self, motivo, restaurar_brilho=False, alvo=None):
+        antes = self.gamer.get("antes") or {}
+        self.gamer = {"ativo": False}
+        gravar_modo_gamer(self.gamer)
+        log.info("Modo gamer desligado (%s)%s", motivo, f" -> tema {alvo}" if alvo else "")
+        b = antes.get("brilho")
+        if restaurar_brilho and isinstance(self.perfis.get("jogos_brilho"), int) and isinstance(b, int) \
+                and b != self.brilho:
+            self.mudar_brilho(b)
+
+    def alternar_gamer(self):
+        if self.gamer.get("ativo"):
+            self.sair_gamer("manual")
+        else:
+            self.entrar_gamer("manual")
+
+    # ---------- TURMO ----------
+    def fechar_turmo(self):
+        """O TURMO abre com o Windows (tarefa agendada) e pega a porta da tela enquanto o PULSE a reinicia."""
+        try:
+            import psutil
+        except ImportError:
+            return
+        for p in psutil.process_iter(["pid", "name", "exe"]):
+            try:
+                nome = p.info.get("name") or ""
+                if not TURMO.match(nome) or p.pid == os.getpid():
+                    continue
+                novo = p.pid not in self.turmo_visto
+                self.turmo_visto.add(p.pid)
+                p.kill()
+                if novo:
+                    log.info("TURMO aberto (%s, PID %s) foi fechado: ele disputa a tela com o PULSE. "
+                             "Para deixar ele aberto, desligue 'Fechar o TURMO' na configuração.",
+                             p.info.get("exe") or nome, p.pid)
+            except psutil.NoSuchProcess:
+                continue
+            except psutil.AccessDenied:
+                if p.pid not in self.turmo_visto:
+                    self.turmo_visto.add(p.pid)
+                    log.info("O TURMO (PID %s) está aberto e não consegui fechar (sem permissão).", p.pid)
+            except Exception as e:
+                log.info("Falha ao fechar o TURMO: %s", e)
 
     def trocar_tema(self, alvo):
         """Troca na hora (main.py redesenha); se não der, reinicia o main.py."""
@@ -307,6 +591,9 @@ class Painel:
             log.info("config.yaml ilegível: %s", e)
             self.pedir_reinicio()
             return
+        with self.trava_gamer:
+            if self.gamer.get("ativo") and tema != self.perfis.get("jogos"):
+                self._encerrar_gamer("outro tema escolhido na configuração")
         r = None
         if self.proc is not None and reverso == self.reverso_em_uso:
             r = enviar_main(f"tema {tema}")
@@ -358,25 +645,34 @@ class Painel:
             PEDIDO_REINICIO.unlink(missing_ok=True)
             pedido = True
 
-        # --- perfis automáticos
+        # --- TURMO: fecha quando ele abrir (a cada 2 s)
+        if self.perfis.get("fechar_turmo", True) and agora - self.turmo_conferido >= 2:
+            self.turmo_conferido = agora
+            self.fechar_turmo()
+
+        # --- PawnIO instalado depois (botão da configuração): reabre o main.py para ler a temperatura da CPU
+        if self.pawnio is False and agora - self.pawnio_conferido >= 15:
+            self.pawnio_conferido = agora
+            if pawnio_instalado():
+                self.pawnio = True
+                log.info("Driver PawnIO instalado: reiniciando a tela para ler a temperatura da CPU.")
+                pedido = True
+
+        # --- modo gamer automático (jogo em tela cheia)
         if self.perfis.get("auto"):
             jogo = jogo_em_tela_cheia()
             if jogo != self.em_jogo:
                 self.desde = self.desde or agora
-                espera = float(self.perfis.get("entrar_s" if jogo else "sair_s", 5 if jogo else 20))
+                espera = float(self.perfis.get("entrar_s" if jogo else "sair_s", 3 if jogo else 5))
                 if agora - self.desde >= espera:
                     self.em_jogo, self.desde = jogo, None
-                    alvo = self.perfis.get("jogos" if jogo else "trabalho")
                     try:
-                        if alvo and (APP / "res" / "themes" / alvo / "theme.yaml").is_file() and tema_atual() != alvo:
-                            log.info("%s -> tema %s", "Jogo em tela cheia" if jogo else "Saiu do jogo", alvo)
-                            with self.trava:
-                                definir_tema(alvo)
-                            if self.proc is None or enviar_main(f"tema {alvo}") != "ok":
-                                pedido = True
-                            self.atualizar_estado()
+                        if jogo:
+                            self.entrar_gamer("auto")
+                        elif self.gamer.get("ativo") and self.gamer.get("origem") == "auto":
+                            self.sair_gamer("auto")
                     except Exception as e:
-                        log.info("Falha ao trocar de tema: %s", e)
+                        log.info("Falha ao trocar o modo gamer: %s", e)
             else:
                 self.desde = None
         else:
@@ -395,6 +691,16 @@ class Painel:
             self.proxima_abertura = 0.0
             agora = time.monotonic()
 
+        # --- Windows desligando: não reabre nada (o main.py já apagou a tela)
+        if windows_desligando():
+            if not self.desligando:
+                self.desligando = True
+                log.info("Windows desligando: a tela foi apagada e não será reaberta.")
+            return
+        if self.desligando:
+            self.desligando = False
+            log.info("Desligamento cancelado: a tela segue normalmente.")
+
         # --- mantém o main.py rodando
         if self.proc is not None and self.proc.poll() is not None:
             codigo = self.proc.returncode
@@ -402,13 +708,24 @@ class Painel:
             vida = agora - self.inicio_proc
             self.falhas = 0 if vida > 60 else self.falhas + 1
             espera = min(60, 2 * (2 ** min(self.falhas, 5))) if self.falhas else 1.5
+            if codigo == tela_usb.CODIGO_RECONECTAR and self.falhas <= 3:
+                espera = 1.0             # a tela caiu: reabre já para reconectar e redesenhar
             self.proxima_abertura = agora + espera
-            log.info("main.py fechou (código %s); reabrindo em %.0f s", codigo, espera)
+            motivo = motivo_saida(self.log_main_desde, codigo)
+            log.info("main.py fechou (código %s)%s; reabrindo em %.0f s", descrever_codigo(codigo),
+                     f": {motivo}" if motivo else "", espera)
+            if codigo != tela_usb.CODIGO_RECONECTAR:
+                tela_usb.gravar_estado("parado", mensagem="O programa da tela fechou", detalhe=motivo or
+                                       f"código de saída {codigo}", codigo=codigo, pid=None)
+            self.atualizar_estado()
         if self.proc is None and agora >= self.proxima_abertura and not self.fim.is_set():
             try:
                 self.reverso_em_uso = bool(ler_config()["display"].get("DISPLAY_REVERSE", False))
             except Exception:
                 self.reverso_em_uso = None
+            self.log_main_desde = _tamanho(LOG_MAIN)
+            if tela_usb.ler_estado().get("estado") != "reconectando":
+                tela_usb.gravar_estado("iniciando", mensagem="Iniciando o programa da tela", detalhe="", pid=None)
             self.proc = abrir_main()
             self.inicio_proc = agora
 
@@ -421,7 +738,9 @@ def servidor_comandos(srv, painel):
         "aplicar": painel.aplicar,
         "perfis": painel.atualizar_estado,
         "trabalho": lambda: painel.usar_perfil("trabalho"),
-        "jogos": lambda: painel.usar_perfil("jogos"),
+        "jogos": lambda: painel.entrar_gamer("manual"),
+        "gamer": painel.alternar_gamer,
+        "sair_gamer": lambda: painel.sair_gamer("manual"),
         "sair": painel.sair,
     }
     while not painel.fim.is_set():
@@ -451,9 +770,6 @@ def criar_icone(painel):
     def em_fundo(f, *a):                  # troca de tema/brilho fora da thread do menu
         return lambda: threading.Thread(target=f, args=a, daemon=True).start()
 
-    def perfil_marcado(perfil):
-        return lambda item: bool(painel.tema) and painel.tema == painel.perfis.get(perfil)
-
     def brilho_marcado(valor):
         return lambda item: painel.brilho == valor
 
@@ -461,9 +777,11 @@ def criar_icone(painel):
     menu = pystray.Menu(
         m("Abrir configurações", faz(abrir_configuracao), default=True),
         pystray.Menu.SEPARATOR,
-        m("Perfil Trabalho", em_fundo(painel.usar_perfil, "trabalho"), checked=perfil_marcado("trabalho"), radio=True),
-        m("Perfil Jogos", em_fundo(painel.usar_perfil, "jogos"), checked=perfil_marcado("jogos"), radio=True),
-        m("Trocar sozinho ao jogar (tela cheia)", faz(painel.alternar_auto),
+        m("Modo gamer", em_fundo(painel.alternar_gamer), checked=lambda item: bool(painel.gamer.get("ativo"))),
+        m("Perfil Trabalho", em_fundo(painel.usar_perfil, "trabalho"),
+          checked=lambda item: not painel.gamer.get("ativo") and painel.tema == painel.perfis.get("trabalho"),
+          radio=True),
+        m("Modo gamer sozinho ao jogar (tela cheia)", faz(painel.alternar_auto),
           checked=lambda item: bool(painel.perfis.get("auto"))),
         m("Brilho da tela", pystray.Menu(*[m(f"{v}%", em_fundo(painel.mudar_brilho, v), checked=brilho_marcado(v), radio=True)
                                            for v in (5, 10, 20, 35, 50, 75, 100)])),
@@ -471,7 +789,7 @@ def criar_icone(painel):
         m("Reiniciar a tela", faz(painel.pedir_reinicio)),
         m("Sair (a tela para de atualizar)", faz(painel.sair)),
     )
-    return pystray.Icon("PainelTelemetria", Image.open(ICONE_PNG), "Painel de Telemetria", menu)
+    return pystray.Icon("PULSE", Image.open(ICONE_PNG), "PULSE — System Telemetry", menu)
 
 
 def main():
@@ -489,9 +807,17 @@ def main():
     from parar_painel import parar_main
     parar_main()                          # um main.py antigo, aberto por fora, seguraria a porta da tela
     PEDIDO_REINICIO.unlink(missing_ok=True)
-    log.info("Iniciador ligado.")
+    DESLIGANDO.unlink(missing_ok=True)    # sobra do último desligamento
+    admin = tela_usb.eh_admin()
+    log.info("Iniciador ligado (administrador: %s).", "sim" if admin else "não")
+    if not admin:
+        log.info("Sem administrador algumas leituras (temperatura da CPU) ficam vazias. A tarefa '%s' "
+                 "do Windows abre o PULSE como administrador.", "PainelTelemetria")
 
     painel = Painel()
+    if painel.pawnio is False:
+        log.info("Driver PawnIO não instalado: a temperatura da CPU fica vazia. Instale pela janela de "
+                 "configuração (aviso no topo) ou reinstale o PULSE.")
     painel.atualizar_estado()
     threading.Thread(target=servidor_comandos, args=(srv, painel), daemon=True).start()
     if abrir:
