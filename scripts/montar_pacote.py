@@ -143,6 +143,18 @@ AJUSTES_MAIN = [
      "    wait_for_empty_queue(10)\n"
      "    if tela_usb:\n"
      "        tela_usb.envio_concluido(display, scheduler.is_queue_empty())\n"),
+    # apagar a tela ao desligar/reiniciar/suspender o Windows, direto na porta e sem o iniciador reabrir
+    # o main.py no meio do desligamento (painel/desligamento.py)
+    ("        wndclass.lpfnWndProc = messageMap\n",
+     "        try:  # PULSE: apaga a tela ao desligar, reiniciar, sair da conta ou suspender (painel/desligamento.py)\n"
+     "            import painel.desligamento as desligamento\n"
+     "            messageMap = desligamento.mapa_mensagens(messageMap, display)\n"
+     "        except Exception as e:\n"
+     "            logger.exception(\"Apagar a tela no desligamento indisponível: %s\", e)\n"
+     "        wndclass.lpfnWndProc = messageMap\n"),
+    # o Windows espera a resposta ao aviso de desligamento: atende as mensagens a cada 0,1 s (era 0,5 s)
+    ("                win32gui.PumpWaitingMessages()\n                time.sleep(0.5)\n",
+     "                win32gui.PumpWaitingMessages()\n                time.sleep(0.1)\n"),
 ]
 
 # Sem administrador o LibreHardwareMonitor não lê alguns sensores (temperatura da CPU, por exemplo), e a
@@ -165,6 +177,15 @@ AJUSTES_LHM = [
     # Com duas placas AMD (ex.: Radeon integrada do Ryzen + RX dedicada) a biblioteca usava a última que tivesse
     # sensor de carga, às vezes a integrada. O PULSE escolhe a dedicada ou a escolhida na configuração
     # (painel/placa_video.py); se algo falhar, segue a lógica original.
+    # A DiskInfoToolkit (SSDs) tem uma thread que derruba o programa inteiro com NullReferenceException quando
+    # um disco sem partição aparece (pendrive, leitor de cartão...). O PULSE para essa thread (painel/protecao_lhm.py).
+    ("handle.Open()\n",
+     "handle.Open()\n"
+     "try:  # PULSE: impede a queda da DiskInfoToolkit ao conectar dispositivos (painel/protecao_lhm.py)\n"
+     "    import painel.protecao_lhm as _pulse_protecao\n"
+     "    _pulse_protecao.proteger()\n"
+     "except Exception as _e:\n"
+     "    logger.warning(\"Proteção dos sensores indisponível: %s\" % _e)\n"),
     ("def get_gpu_name() -> str:\n",
      "def get_gpu_name() -> str:\n"
      "    try:  # PULSE: placa escolhida na configuração ou a dedicada (painel/placa_video.py)\n"

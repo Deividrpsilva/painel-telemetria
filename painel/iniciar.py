@@ -42,6 +42,7 @@ PORTA_CONFIG = 5680              # janela de configuração (painel/config_ui.py
 PORTA_MAIN = 5682                # main.py: troca de tema/brilho sem reiniciar (painel/troca_tema.py)
 SIMULAR_JOGO = DESTINO / "simular_jogo.txt"   # para testes: se existir, finge que há um jogo em tela cheia
 PEDIDO_REINICIO = DESTINO / ".reiniciar"      # alternativa ao comando "reiniciar"
+DESLIGANDO = DESTINO / ".desligando"          # o main.py grava ao receber o aviso de desligamento (painel/desligamento.py)
 SAIDA_MAIN = DESTINO / "main_saida.log"       # o que o main.py escreve fora do log (erros de import, tracebacks)
 LOG_MAIN = APP / "log.log"                    # log da biblioteca da tela
 ICONE_PNG = PAINEL / "pulse_tray.png"
@@ -254,6 +255,23 @@ def nome_do_tema(pasta):
         return pasta
 
 
+def windows_desligando():
+    """True se o Windows está desligando, reiniciando ou saindo da conta: aí o main.py NÃO pode ser reaberto,
+    senão ele reinicia a tela e ela fica acesa com o PC desligado."""
+    try:
+        if time.time() - DESLIGANDO.stat().st_mtime < 300:
+            return True
+    except OSError:
+        pass
+    if WINDOWS:
+        try:
+            import ctypes
+            return bool(ctypes.windll.user32.GetSystemMetrics(0x2000))   # SM_SHUTTINGDOWN
+        except Exception:
+            pass
+    return False
+
+
 def abrir_main():
     # o ícone da bandeja é o deste iniciador; a saída do main.py vai para main_saida.log (no pythonw ela sumia)
     env = dict(os.environ, PAINEL_SEM_BANDEJA="1", PULSE_SAIDA="1", PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
@@ -379,6 +397,7 @@ class Painel:
         self.proc = None
         self.falhas = 0
         self.proxima_abertura = 0.0
+        self.desligando = False          # Windows desligando (painel/desligamento.py): não reabre o main.py
         self.inicio_proc = 0.0
         self.em_jogo = False             # situação confirmada
         self.desde = None                # quando a situação começou a mudar
@@ -672,6 +691,16 @@ class Painel:
             self.proxima_abertura = 0.0
             agora = time.monotonic()
 
+        # --- Windows desligando: não reabre nada (o main.py já apagou a tela)
+        if windows_desligando():
+            if not self.desligando:
+                self.desligando = True
+                log.info("Windows desligando: a tela foi apagada e não será reaberta.")
+            return
+        if self.desligando:
+            self.desligando = False
+            log.info("Desligamento cancelado: a tela segue normalmente.")
+
         # --- mantém o main.py rodando
         if self.proc is not None and self.proc.poll() is not None:
             codigo = self.proc.returncode
@@ -778,6 +807,7 @@ def main():
     from parar_painel import parar_main
     parar_main()                          # um main.py antigo, aberto por fora, seguraria a porta da tela
     PEDIDO_REINICIO.unlink(missing_ok=True)
+    DESLIGANDO.unlink(missing_ok=True)    # sobra do último desligamento
     admin = tela_usb.eh_admin()
     log.info("Iniciador ligado (administrador: %s).", "sim" if admin else "não")
     if not admin:
