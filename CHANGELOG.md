@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## 7.2
+- **O painel não "reinicia sozinho" mais**: a causa eram quedas do programa da tela (0xC0000005) vindas da biblioteca que lê os SSDs (DiskInfoToolkit, dentro do LibreHardwareMonitor). Ela tem uma vigia própria que acorda sempre que o Windows detecta um dispositivo novo (pendrive, leitor de cartão, celular, a própria tela USB reiniciando) e, ao encontrar um disco sem partição, dava NullReferenceException numa thread do .NET que derrubava o programa inteiro. O PULSE agora desliga essa vigia logo depois de abrir os sensores. Os SSDs continuam com temperatura e uso; só um disco ligado depois de o painel abrir aparece na próxima vez que ele abrir.
+- **A tela apaga quando o PC desliga, reinicia, sai da conta ou entra em suspensão**:
+  - ao receber o aviso do Windows, o brilho vai a 0 e a tela é desligada na hora, direto na porta (antes o comando ia para o fim da fila e o Windows encerrava antes);
+  - o iniciador não reabre mais o programa da tela durante o desligamento (antes ele reabria em 1,5 s, a tela era reiniciada e ficava acesa com o PC desligado);
+  - com a Inicialização Rápida do Windows ligada ou em suspensão a USB continua com energia, por isso apagar antes de sair é necessário;
+  - se o desligamento for cancelado, a tela acende de novo; ao voltar da suspensão, a tela é redesenhada inteira.
+
 ## 7.1
 - **FPS sem números cortados e sem travar**:
   - os desenhos de cada sensor não se misturam mais na fila da tela (antes o comando de um podia receber os dados de outro e aparecer pedaço de número ou lixo);
